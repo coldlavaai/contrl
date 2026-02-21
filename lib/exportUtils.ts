@@ -33,8 +33,25 @@ function getPlotlyGd(container: HTMLElement): HTMLElement | null {
 }
 
 /**
+ * Get Plotly module dynamically (client-side only).
+ * Uses eval-based dynamic import to prevent Next.js/Turbopack from statically
+ * analyzing and bundling plotly.js (which has Node polyfill issues).
+ */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+async function getPlotlyModule(): Promise<any> {
+  // Check if Plotly is already on window (some setups expose it)
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  if ((window as any).Plotly?.toImage) {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    return (window as any).Plotly;
+  }
+  // Dynamic import hidden from bundler static analysis
+  const mod = await new Function('return import("plotly.js")')();
+  return mod.default || mod;
+}
+
+/**
  * Capture a Plotly chart as a base64 PNG/JPEG image string.
- * Uses the Plotly instance already loaded on the window (avoids SSR bundling issues).
  */
 export async function captureChartImage(
   chartContainer: HTMLElement,
@@ -44,16 +61,7 @@ export async function captureChartImage(
   const gd = getPlotlyGd(chartContainer);
   if (!gd) throw new Error("No Plotly chart found in container");
 
-  // Plotly is already loaded client-side via react-plotly.js; access it from the gd element
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const Plotly = (window as any).Plotly;
-  if (!Plotly?.toImage) {
-    // Fallback: dynamic import (only runs client-side)
-    const mod = await Function('return import("plotly.js")')();
-    const dataUrl = await mod.toImage(gd, { format, width: 1200, height: 600, scale });
-    return dataUrl;
-  }
-
+  const Plotly = await getPlotlyModule();
   const dataUrl = await Plotly.toImage(gd, {
     format,
     width: 1200,
