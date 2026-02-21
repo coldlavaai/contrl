@@ -12,6 +12,15 @@ export interface TargetLine {
   color: "red" | "amber" | "green" | "blue";
 }
 
+export interface ChartColors {
+  background?: string;
+  meanLine?: string;
+  medianLine?: string;
+  uclLine?: string;
+  lclLine?: string;
+  dataPoints?: string;
+}
+
 export interface SavedChart {
   id: string; // uuid
   title: string;
@@ -37,6 +46,8 @@ export interface SavedChart {
   // Axis labels
   xAxisLabel?: string;
   yAxisLabel?: string;
+  // Per-chart custom colors (overrides global defaults)
+  customColors?: ChartColors;
 }
 
 const STORAGE_KEY = "contrl_charts";
@@ -117,6 +128,7 @@ function chartToRow(chart: SavedChart, userId: string) {
     chart_type: chart.chartType ?? "xmr",
     x_axis_label: chart.xAxisLabel ?? null,
     y_axis_label: chart.yAxisLabel ?? null,
+    custom_colors: chart.customColors ?? null,
   };
 }
 
@@ -137,6 +149,7 @@ function rowToChart(row: Record<string, unknown>): SavedChart {
     chartType: (row.chart_type as string) ?? "xmr",
     xAxisLabel: (row.x_axis_label as string) ?? undefined,
     yAxisLabel: (row.y_axis_label as string) ?? undefined,
+    customColors: (row.custom_colors as ChartColors) ?? undefined,
   };
 }
 
@@ -235,6 +248,7 @@ export async function updateChartCloud(
     if (partial.chartType !== undefined) updateData.chart_type = partial.chartType;
     if (partial.xAxisLabel !== undefined) updateData.x_axis_label = partial.xAxisLabel;
     if (partial.yAxisLabel !== undefined) updateData.y_axis_label = partial.yAxisLabel;
+    if (partial.customColors !== undefined) updateData.custom_colors = partial.customColors;
     updateData.updated_at = new Date().toISOString();
 
     const { error } = await supabase

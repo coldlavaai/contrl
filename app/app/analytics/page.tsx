@@ -381,6 +381,9 @@ export default function AnalyticsPage() {
                       initialTargetLines={chart.targetLines ?? []}
                       omittedIndices={chart.omittedIndices ?? []}
                       initialShowTrendLine={chart.showTrendLine ?? false}
+                      initialXAxisLabel={chart.xAxisLabel}
+                      initialYAxisLabel={chart.yAxisLabel}
+                      initialCustomColors={chart.customColors}
                       readOnly
                     />
                   </div>

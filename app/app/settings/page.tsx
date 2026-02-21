@@ -44,9 +44,9 @@ export default function SettingsPage() {
       <div className="space-y-6">
         <div className="flex items-center justify-between">
           <div>
-            <h2 className="text-lg font-semibold text-gray-200 mb-1">Chart Colors</h2>
+            <h2 className="text-lg font-semibold text-gray-200 mb-1">Default Chart Colors</h2>
             <p className="text-sm text-gray-600">
-              Customize the color scheme for all charts. Changes apply globally and save automatically.
+              Set default colors for new charts. Existing charts keep their custom colors. Click any line in a chart to customize its color.
             </p>
           </div>
 
@@ -127,9 +127,9 @@ export default function SettingsPage() {
               💡
             </div>
             <div>
-              <h3 className="text-sm font-semibold text-indigo-300 mb-1">Color changes apply immediately</h3>
+              <h3 className="text-sm font-semibold text-indigo-300 mb-1">These are defaults for new charts</h3>
               <p className="text-xs text-gray-500">
-                Navigate to any chart page to see your new colors in action. All existing and new charts will use your customized color scheme.
+                New charts will inherit these colors. To customize an individual chart, click on any line (Mean/UCL/LCL/Data) in the chart and pick a new color. Per-chart customizations are saved with the chart.
               </p>
             </div>
           </div>

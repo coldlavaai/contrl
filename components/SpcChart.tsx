@@ -3,9 +3,11 @@
 import dynamic from "next/dynamic";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { calculateSpc, SpcResult } from "@/lib/spc";
-import { Annotation, TargetLine, saveChart } from "@/lib/chartStorage";
+import { Annotation, TargetLine, saveChart, ChartColors } from "@/lib/chartStorage";
 import HistogramChart from "@/components/HistogramChart";
-import { useChartColors } from "@/hooks/useChartColors";
+import { usePerChartColors, type ColorKey } from "@/hooks/usePerChartColors";
+import { ChartColorPickerModal } from "@/components/ChartColorPickerModal";
+import { ChartValuesDisplay } from "@/components/ChartValuesDisplay";
 
 // Dynamically import Plotly to avoid SSR issues
 const Plot = dynamic(() => import("react-plotly.js"), { ssr: false });
@@ -40,6 +42,9 @@ interface SpcChartProps {
   initialYAxisLabel?: string;
   onXAxisLabelChange?: (label: string) => void;
   onYAxisLabelChange?: (label: string) => void;
+  // Per-chart custom colors
+  initialCustomColors?: ChartColors;
+  onCustomColorsChange?: (colors: ChartColors) => void;
 }
 
 interface PopoverState {
@@ -102,9 +107,25 @@ export default function SpcChart({
   initialYAxisLabel,
   onXAxisLabelChange,
   onYAxisLabelChange,
+  initialCustomColors,
+  onCustomColorsChange,
 }: SpcChartProps) {
-  // ── Color settings ─────────────────────────────────────────────────────────
-  const colors = useChartColors();
+  // ── Color settings (per-chart with global fallback) ───────────────────────
+  const { colors, customColors, updateColor, resetToDefaults, hasCustomizations } = usePerChartColors(initialCustomColors);
+  
+  // Notify parent of color changes
+  useEffect(() => {
+    if (onCustomColorsChange && hasCustomizations) {
+      onCustomColorsChange(customColors);
+    }
+  }, [customColors, hasCustomizations, onCustomColorsChange]);
+
+  // ── Color picker modal state ───────────────────────────────────────────────
+  const [colorPickerState, setColorPickerState] = useState<{
+    colorKey: ColorKey;
+    label: string;
+    position: { x: number; y: number };
+  } | null>(null);
 
   // ── Title editing ──────────────────────────────────────────────────────────
   const [editingTitle, setEditingTitle] = useState(false);
@@ -212,6 +233,7 @@ export default function SpcChart({
       showTrendLine,
       xAxisLabel,
       yAxisLabel,
+      customColors: hasCustomizations ? customColors : undefined,
     });
     setSavedFlash(true);
     setTimeout(() => setSavedFlash(false), 2000);
@@ -599,6 +621,48 @@ export default function SpcChart({
     const point = event?.points?.[0];
     if (!point) return;
 
+    // Check if clicked on a line trace (not a data point)
+    const traceName = point.data?.name;
+    const mouseEvt = event?.event as MouseEvent | undefined;
+    const isLineClick = traceName && 
+      (traceName.includes("Mean") || 
+       traceName.includes("Median") || 
+       traceName === "UCL" || 
+       traceName === "LCL" ||
+       traceName === "Data");
+
+    // If not in any mode and clicked on a line, open color picker
+    if (!addSplitMode && !addNoteMode && !omitMode && isLineClick && !readOnly && mouseEvt) {
+      let colorKey: ColorKey | null = null;
+      let label = traceName;
+
+      if (traceName.includes("Mean") || traceName.includes("X̄")) {
+        colorKey = "meanLine";
+        label = "Mean Line";
+      } else if (traceName.includes("Median") || traceName.includes("M̃")) {
+        colorKey = "medianLine";
+        label = "Median Line";
+      } else if (traceName === "UCL") {
+        colorKey = "uclLine";
+        label = "Upper Control Limit";
+      } else if (traceName === "LCL") {
+        colorKey = "lclLine";
+        label = "Lower Control Limit";
+      } else if (traceName === "Data") {
+        colorKey = "dataPoints";
+        label = "Data Points";
+      }
+
+      if (colorKey) {
+        setColorPickerState({
+          colorKey,
+          label,
+          position: { x: mouseEvt.clientX, y: mouseEvt.clientY },
+        });
+        return;
+      }
+    }
+
     const clickedX = point.x;
     const actualIndex = dates.indexOf(String(clickedX));
     if (actualIndex === -1) return;
@@ -613,7 +677,6 @@ export default function SpcChart({
     }
 
     if (addNoteMode) {
-      const mouseEvt = event?.event as MouseEvent | undefined;
       const px = mouseEvt ? mouseEvt.clientX : window.innerWidth / 2;
       const py = mouseEvt ? mouseEvt.clientY : window.innerHeight / 2;
       const existing = annotations.find((a) => a.dateIndex === actualIndex);
@@ -1024,7 +1087,21 @@ export default function SpcChart({
             </button>
           )}
 
+          {/* Reset colors button */}
+          {hasCustomizations && (
+            <button
+              onClick={resetToDefaults}
+              className="px-3 py-2 rounded-lg text-sm border border-indigo-500/20 text-indigo-400 hover:text-indigo-300 hover:border-indigo-500/40 transition-all bg-indigo-950/10"
+              title="Reset to default colors from settings"
+            >
+              Reset Colors
+            </button>
+          )}
+
           {/* Contextual hints */}
+          {!activeMode && !readOnly && (
+            <span className="text-xs text-gray-600/80 italic">Click any line to customize its color</span>
+          )}
           {addSplitMode && (
             <span className="text-xs text-indigo-300/60 italic">Click a data point to place split</span>
           )}
@@ -1282,6 +1359,29 @@ export default function SpcChart({
           values={histogramValues}
           title={localTitle}
           unit={unit}
+        />
+      )}
+
+      {/* ── Chart Values Display ── */}
+      {activeTab === "control" && (
+        <ChartValuesDisplay
+          spc={spc}
+          method={method}
+          unit={unit}
+          splitModes={splitModes}
+          colors={colors}
+        />
+      )}
+
+      {/* ── Color Picker Modal ── */}
+      {colorPickerState && (
+        <ChartColorPickerModal
+          colorKey={colorPickerState.colorKey}
+          currentColor={colors[colorPickerState.colorKey]}
+          label={colorPickerState.label}
+          onColorChange={updateColor}
+          onClose={() => setColorPickerState(null)}
+          position={colorPickerState.position}
         />
       )}
 

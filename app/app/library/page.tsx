@@ -429,6 +429,9 @@ export default function LibraryPage() {
               initialTargetLines={selected.targetLines ?? []}
               omittedIndices={selected.omittedIndices ?? []}
               initialShowTrendLine={selected.showTrendLine ?? false}
+              initialXAxisLabel={selected.xAxisLabel}
+              initialYAxisLabel={selected.yAxisLabel}
+              initialCustomColors={selected.customColors}
               readOnly
             />
           </div>
