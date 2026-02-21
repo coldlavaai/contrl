@@ -5,6 +5,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { calculateSpc, SpcResult } from "@/lib/spc";
 import { Annotation, TargetLine, saveChart } from "@/lib/chartStorage";
 import HistogramChart from "@/components/HistogramChart";
+import { useChartColors } from "@/hooks/useChartColors";
 
 // Dynamically import Plotly to avoid SSR issues
 const Plot = dynamic(() => import("react-plotly.js"), { ssr: false });
@@ -102,6 +103,9 @@ export default function SpcChart({
   onXAxisLabelChange,
   onYAxisLabelChange,
 }: SpcChartProps) {
+  // ── Color settings ─────────────────────────────────────────────────────────
+  const colors = useChartColors();
+
   // ── Title editing ──────────────────────────────────────────────────────────
   const [editingTitle, setEditingTitle] = useState(false);
   const [localTitle, setLocalTitle] = useState(title);
@@ -334,7 +338,7 @@ export default function SpcChart({
       showlegend: isFirst,
       x: segDates,
       y: Array(n).fill(seg.mean),
-      line: { color: "#6366f1", width: 2, dash: "dash" },
+      line: { color: method === "median" ? colors.medianLine : colors.meanLine, width: 2, dash: "dash" },
       hovertemplate: `${method === "median" ? "Median" : "Mean"}: ${seg.mean.toFixed(2)}<extra></extra>`,
     });
 
@@ -348,7 +352,7 @@ export default function SpcChart({
           showlegend: isFirst,
           x: segDates,
           y: Array(n).fill(seg.ucl),
-          line: { color: "#ef4444", width: 1.5, dash: "dash" },
+          line: { color: colors.uclLine, width: 1.5, dash: "dash" },
           hovertemplate: `UCL: ${seg.ucl.toFixed(2)}<extra></extra>`,
         },
         {
@@ -359,7 +363,7 @@ export default function SpcChart({
           showlegend: isFirst,
           x: segDates,
           y: Array(n).fill(seg.lcl),
-          line: { color: "#ef4444", width: 1.5, dash: "dash" },
+          line: { color: colors.lclLine, width: 1.5, dash: "dash" },
           hovertemplate: `LCL: ${seg.lcl.toFixed(2)}<extra></extra>`,
         }
       );
@@ -406,7 +410,7 @@ export default function SpcChart({
       y: lineY,
       name: "",
       showlegend: false,
-      line: { color: "#a5b4fc", width: 2 },
+      line: { color: colors.dataPoints, width: 2 },
       hoverinfo: "skip",
       connectgaps: false,
     },
@@ -417,7 +421,7 @@ export default function SpcChart({
       name: "Data",
       x: normalPoints.map((p) => p.date),
       y: normalPoints.map((p) => p.value),
-      marker: { ...commonMarker, color: "#a5b4fc" },
+      marker: { ...commonMarker, color: colors.dataPoints },
       hovertemplate: `<b>%{x}</b><br>Value: %{y:.1f} ${unit}<extra></extra>`,
     },
     // 5. Omitted points — hollow grey circles
@@ -460,8 +464,8 @@ export default function SpcChart({
   const sparseTicks = dates.filter((_, i) => i % tickStep === 0);
 
   const layout: Partial<Plotly.Layout> = {
-    paper_bgcolor: "#141414",
-    plot_bgcolor: "#141414",
+    paper_bgcolor: colors.background,
+    plot_bgcolor: colors.background,
     font: { color: "#9ca3af", family: "Inter, sans-serif" },
     xaxis: {
       // Force category type so Plotly treats dates as labels, not date ranges
@@ -499,7 +503,7 @@ export default function SpcChart({
     annotations: plotlyAnnotations,
     hoverlabel: {
       bgcolor: "#1e1e2e",
-      bordercolor: "#6366f1",
+      bordercolor: method === "median" ? colors.medianLine : colors.meanLine,
       font: { color: "#fff", size: 13 },
     },
     hovermode: "closest",
@@ -523,7 +527,7 @@ export default function SpcChart({
       y: spc.movingRanges,
       marker: {
         color: spc.movingRanges.map((v, i) =>
-          omittedSet.has(i) ? "#374151" : v > spc.mrUcl ? "#ef4444" : "#818cf8"
+          omittedSet.has(i) ? "#374151" : v > spc.mrUcl ? colors.uclLine : colors.dataPoints
         ),
         opacity: 0.8,
       },
@@ -535,7 +539,7 @@ export default function SpcChart({
       name: "MR Mean (R̄)",
       x: dates,
       y: Array(dates.length).fill(spc.mrMean),
-      line: { color: "#6366f1", width: 1.5, dash: "dash" },
+      line: { color: method === "median" ? colors.medianLine : colors.meanLine, width: 1.5, dash: "dash" },
       hovertemplate: `R̄: ${spc.mrMean.toFixed(3)}<extra></extra>`,
     },
     {
@@ -544,14 +548,14 @@ export default function SpcChart({
       name: "MR UCL",
       x: dates,
       y: Array(dates.length).fill(spc.mrUcl),
-      line: { color: "#ef4444", width: 1.5, dash: "dash" },
+      line: { color: colors.uclLine, width: 1.5, dash: "dash" },
       hovertemplate: `MR UCL: ${spc.mrUcl.toFixed(3)}<extra></extra>`,
     },
   ];
 
   const mrLayout: Partial<Plotly.Layout> = {
-    paper_bgcolor: "#141414",
-    plot_bgcolor: "#141414",
+    paper_bgcolor: colors.background,
+    plot_bgcolor: colors.background,
     font: { color: "#9ca3af", family: "Inter, sans-serif" },
     xaxis: {
       type: "category" as const,
@@ -583,7 +587,7 @@ export default function SpcChart({
     margin: { l: 55, r: 20, t: 4, b: 10 },
     hoverlabel: {
       bgcolor: "#1e1e2e",
-      bordercolor: "#6366f1",
+      bordercolor: method === "median" ? colors.medianLine : colors.meanLine,
       font: { color: "#fff", size: 12 },
     },
     hovermode: "closest",

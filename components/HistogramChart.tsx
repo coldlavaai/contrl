@@ -2,6 +2,7 @@
 
 import dynamic from "next/dynamic";
 import { useMemo } from "react";
+import { useChartColors } from "@/hooks/useChartColors";
 
 const Plot = dynamic(() => import("react-plotly.js"), { ssr: false });
 
@@ -45,6 +46,7 @@ function normalPdf(x: number, mean: number, std: number): number {
 }
 
 export default function HistogramChart({ values, title, unit }: HistogramChartProps) {
+  const colors = useChartColors();
   const { mean, std, skewness, kurtosis } = useMemo(() => calcStats(values), [values]);
 
   const { binCounts, binCenters, binWidth } = useMemo(() => {
@@ -94,8 +96,8 @@ export default function HistogramChart({ values, title, unit }: HistogramChartPr
       y: binCounts,
       width: binWidth * 0.9,
       marker: {
-        color: "rgba(99, 102, 241, 0.6)",
-        line: { color: "rgba(99, 102, 241, 0.9)", width: 1 },
+        color: colors.dataPoints + "99", // Add transparency
+        line: { color: colors.dataPoints, width: 1 },
       },
       hovertemplate: `Value: %{x:.2f}<br>Count: %{y}<extra></extra>`,
     },
@@ -111,8 +113,8 @@ export default function HistogramChart({ values, title, unit }: HistogramChartPr
   ];
 
   const layout: Partial<Plotly.Layout> = {
-    paper_bgcolor: "#141414",
-    plot_bgcolor: "#141414",
+    paper_bgcolor: colors.background,
+    plot_bgcolor: colors.background,
     font: { color: "#9ca3af", family: "Inter, sans-serif" },
     xaxis: {
       title: { text: unit || "Value", font: { color: "#6b7280", size: 12 } },
@@ -136,7 +138,7 @@ export default function HistogramChart({ values, title, unit }: HistogramChartPr
     bargap: 0.05,
     hoverlabel: {
       bgcolor: "#1e1e2e",
-      bordercolor: "#6366f1",
+      bordercolor: colors.meanLine,
       font: { color: "#fff", size: 13 },
     },
     hovermode: "closest",
