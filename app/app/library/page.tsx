@@ -14,6 +14,7 @@ import {
 import { calculateSpc } from "@/lib/spc";
 import FileUpload, { WorkbookData } from "@/components/FileUpload";
 import ColumnMapper, { MappedDataset } from "@/components/ColumnMapper";
+import ManualDataEntry from "@/components/ManualDataEntry";
 import { ParsedSheet } from "@/components/FileUpload";
 
 const SpcChart = dynamic(() => import("@/components/SpcChart"), { ssr: false });
@@ -54,6 +55,7 @@ export default function LibraryPage() {
   const [appendWorkbook, setAppendWorkbook] = useState<WorkbookData | null>(null);
   const [appendSheet, setAppendSheet] = useState<ParsedSheet | null>(null);
   const [selectedSheetName, setSelectedSheetName] = useState<string>("");
+  const [appendMode, setAppendMode] = useState<"file" | "manual">("manual");
 
   // Toast notifications
   const [toasts, setToasts] = useState<Toast[]>([]);
@@ -171,6 +173,7 @@ export default function LibraryPage() {
     setAppendWorkbook(null);
     setAppendSheet(null);
     setSelectedSheetName("");
+    setAppendMode("manual");
   };
 
   const handleWorkbookParsed = (data: WorkbookData) => {
@@ -342,11 +345,80 @@ export default function LibraryPage() {
             {/* Modal body */}
             <div className="p-6 max-h-[70vh] overflow-y-auto">
               {appendStep === "upload" && (
-                <div className="space-y-4">
-                  <p className="text-sm text-gray-400">
-                    Upload a new Excel or CSV file. The new data will be appended after the existing {appendTarget.measure.values.length} data points, with a split marker automatically added at the join point.
-                  </p>
-                  <FileUpload onWorkbookParsed={handleWorkbookParsed} />
+                <div className="space-y-5">
+                  {/* Mode toggle */}
+                  <div className="flex items-center rounded-lg border border-white/10 bg-white/5 overflow-hidden w-fit">
+                    <button
+                      onClick={() => setAppendMode("manual")}
+                      className={`px-4 py-2 text-sm font-semibold transition-all ${
+                        appendMode === "manual" ? "bg-indigo-600 text-white" : "text-gray-400 hover:text-gray-200"
+                      }`}
+                    >
+                      Manual Entry
+                    </button>
+                    <button
+                      onClick={() => setAppendMode("file")}
+                      className={`px-4 py-2 text-sm font-semibold transition-all ${
+                        appendMode === "file" ? "bg-indigo-600 text-white" : "text-gray-400 hover:text-gray-200"
+                      }`}
+                    >
+                      Upload File
+                    </button>
+                  </div>
+
+                  {appendMode === "manual" && (
+                    <ManualDataEntry
+                      mode="append"
+                      onConfirm={({ dates: newDates, values: newVals }) => {
+                        if (!appendTarget) return;
+                        const existingValues = appendTarget.measure.values;
+                        const existingDates = appendTarget.measure.dates;
+                        const joinIndex = existingValues.length;
+
+                        const mergedDates = [...existingDates, ...newDates];
+                        const mergedValues = [...existingValues, ...newVals];
+
+                        const existingSplits = appendTarget.splitIndices ?? [];
+                        const mergedSplits = [...existingSplits];
+                        if (!mergedSplits.includes(joinIndex)) {
+                          mergedSplits.push(joinIndex);
+                          mergedSplits.sort((a, b) => a - b);
+                        }
+
+                        const updatedChart = updateChart(appendTarget.id, {
+                          measure: {
+                            ...appendTarget.measure,
+                            dates: mergedDates,
+                            values: mergedValues,
+                          },
+                          splitIndices: mergedSplits,
+                          savedAt: Date.now(),
+                        });
+
+                        if (!updatedChart) {
+                          showToast("Failed to update chart.", "error");
+                          return;
+                        }
+
+                        setCharts(getSavedCharts());
+                        if (selected?.id === appendTarget.id) setSelected(updatedChart);
+                        closeAppend();
+                        showToast(
+                          `Appended ${newVals.length} data points to "${appendTarget.title}".`,
+                          "success"
+                        );
+                      }}
+                    />
+                  )}
+
+                  {appendMode === "file" && (
+                    <div className="space-y-4">
+                      <p className="text-sm text-gray-400">
+                        Upload a new Excel or CSV file. Data will be appended with a split marker.
+                      </p>
+                      <FileUpload onWorkbookParsed={handleWorkbookParsed} />
+                    </div>
+                  )}
                 </div>
               )}
 

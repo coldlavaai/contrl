@@ -5,6 +5,7 @@ import { useSearchParams } from "next/navigation";
 import dynamic from "next/dynamic";
 import FileUpload, { WorkbookData, ParsedSheet } from "@/components/FileUpload";
 import ColumnMapper, { MappedDataset } from "@/components/ColumnMapper";
+import ManualDataEntry from "@/components/ManualDataEntry";
 import { dummyDataset } from "@/lib/dummyData";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { Badge } from "@/components/ui/badge";
@@ -743,12 +744,50 @@ function NewChartPageInner() {
       {state === "upload" && (
         <div className="max-w-2xl mx-auto space-y-6">
           <div className="text-center mb-6">
-            <h2 className="text-lg font-semibold text-white mb-1">Upload your data</h2>
+            <h2 className="text-lg font-semibold text-white mb-1">Add your data</h2>
             <p className="text-gray-500 text-sm">
-              Upload an Excel (.xlsx) or CSV file
+              Upload a file, enter data manually, or load the demo dataset
             </p>
           </div>
+
+          {/* Upload & Create Chart */}
           <FileUpload onWorkbookParsed={handleWorkbookParsed} />
+
+          {/* Manual Entry — only for single-column chart types */}
+          {(chartType === "xmr" || chartType === "cusum" || chartType === "ewma" || chartType === "run" || chartType === "moving-avg" || chartType === "cchart") && (
+            <>
+              <div className="flex items-center gap-4">
+                <div className="flex-1 border-t border-white/8" />
+                <span className="text-xs text-gray-600">or enter data manually</span>
+                <div className="flex-1 border-t border-white/8" />
+              </div>
+
+              <div className="p-5 rounded-xl border border-white/8 bg-white/[0.02]">
+                <ManualDataEntry
+                  onConfirm={({ dates, values: vals }) => {
+                    const d: MappedDataset = {
+                      name: "Manual Entry",
+                      dates,
+                      measures: [{ name: "Value", unit: "", data: vals }],
+                    };
+                    setDataset(d);
+                    setSplitIndicesMap({});
+                    setAnnotationsMap({});
+                    setTitlesMap({});
+                    setOmittedMap({});
+                    setXAxisLabelsMap({});
+                    setYAxisLabelsMap({});
+                    setShowScatter(false);
+                    setUsingDemo(false);
+                    setState("charts");
+                  }}
+                  valueLabel="Value"
+                  valuePlaceholder="e.g. 42.5"
+                />
+              </div>
+            </>
+          )}
+
           {(chartType === "xmr" || chartType === "cusum" || chartType === "ewma" || chartType === "run" || chartType === "moving-avg") && (
             <>
               <div className="flex items-center gap-4">

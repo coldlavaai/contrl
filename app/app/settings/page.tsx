@@ -1,6 +1,16 @@
 "use client";
 
 import { useState, useEffect } from "react";
+import Link from "next/link";
+import {
+  Bell,
+  BellRing,
+  Mail,
+  Clock,
+  Users,
+  ChevronRight,
+  AlertCircle,
+} from "lucide-react";
 import { ColorPicker } from "@/components/ui/color-picker";
 import {
   getChartColors,
@@ -9,29 +19,51 @@ import {
   ChartColors,
   DEFAULT_COLORS,
 } from "@/lib/colorSettings";
+import {
+  getEmailAlertSettings,
+  saveEmailAlertSettings,
+  EmailAlertSettings,
+} from "@/lib/alerts";
+import { cn } from "@/lib/utils";
 
 export default function SettingsPage() {
   const [colors, setColors] = useState<ChartColors>(DEFAULT_COLORS);
   const [saved, setSaved] = useState(false);
+  const [emailSettings, setEmailSettings] = useState<EmailAlertSettings>({
+    enabled: false,
+    email: "",
+    frequency: "daily",
+  });
 
   useEffect(() => {
     setColors(getChartColors());
+    setEmailSettings(getEmailAlertSettings());
   }, []);
 
   const handleColorChange = (key: keyof ChartColors, value: string) => {
     const updated = { ...colors, [key]: value };
     setColors(updated);
     saveChartColors(updated);
-    setSaved(true);
-    setTimeout(() => setSaved(false), 2000);
+    showSaved();
   };
 
   const handleReset = () => {
     resetChartColors();
     setColors(DEFAULT_COLORS);
+    showSaved();
+  };
+
+  function showSaved() {
     setSaved(true);
     setTimeout(() => setSaved(false), 2000);
-  };
+  }
+
+  function handleEmailSettingChange(update: Partial<EmailAlertSettings>) {
+    const updated = { ...emailSettings, ...update };
+    setEmailSettings(updated);
+    saveEmailAlertSettings(updated);
+    showSaved();
+  }
 
   return (
     <div className="px-6 py-8 max-w-3xl mx-auto">
@@ -40,7 +72,7 @@ export default function SettingsPage() {
         <p className="text-gray-500 mt-1">Customize your chart appearance and preferences</p>
       </div>
 
-      {/* Color Customization Section */}
+      {/* ─── Color Customization ──────────────────────────────────────────── */}
       <div className="space-y-6">
         <div className="flex items-center justify-between">
           <div>
@@ -136,16 +168,132 @@ export default function SettingsPage() {
         </div>
       </div>
 
-      {/* Future settings placeholder */}
+      {/* ─── Email Alerts ─────────────────────────────────────────────────── */}
       <div className="mt-12 pt-8 border-t border-white/10">
-        <h2 className="text-lg font-semibold text-gray-200 mb-4">More Settings Coming Soon</h2>
-        <div className="flex flex-wrap items-center gap-3 text-xs text-gray-700">
-          <span className="px-3 py-1.5 rounded-full border border-white/8">User accounts</span>
-          <span className="px-3 py-1.5 rounded-full border border-white/8">Team workspaces</span>
-          <span className="px-3 py-1.5 rounded-full border border-white/8">Data export</span>
-          <span className="px-3 py-1.5 rounded-full border border-white/8">Notifications</span>
-          <span className="px-3 py-1.5 rounded-full border border-white/8">API access</span>
+        <div className="flex items-center gap-2 mb-1">
+          <BellRing className="h-5 w-5 text-gray-400" />
+          <h2 className="text-lg font-semibold text-gray-200">Email Alerts</h2>
         </div>
+        <p className="text-sm text-gray-600 mb-6">
+          Get notified when out-of-control signals or process changes are detected.
+        </p>
+
+        <div className="space-y-4">
+          {/* Enable toggle */}
+          <div className="flex items-center justify-between p-4 rounded-xl border border-white/[0.06] bg-[#111111]">
+            <div className="flex items-center gap-3">
+              <Bell className="h-5 w-5 text-gray-400" />
+              <div>
+                <p className="text-sm font-medium text-gray-200">Enable email alerts</p>
+                <p className="text-xs text-gray-600">Receive notifications about chart signals</p>
+              </div>
+            </div>
+            <button
+              onClick={() => handleEmailSettingChange({ enabled: !emailSettings.enabled })}
+              className={cn(
+                "relative w-11 h-6 rounded-full transition-colors duration-200",
+                emailSettings.enabled ? "bg-indigo-600" : "bg-white/10"
+              )}
+            >
+              <span
+                className={cn(
+                  "absolute top-0.5 left-0.5 w-5 h-5 rounded-full bg-white shadow transition-transform duration-200",
+                  emailSettings.enabled ? "translate-x-5" : "translate-x-0"
+                )}
+              />
+            </button>
+          </div>
+
+          {emailSettings.enabled && (
+            <>
+              {/* Email address */}
+              <div className="p-4 rounded-xl border border-white/[0.06] bg-[#111111]">
+                <div className="flex items-center gap-2 mb-3">
+                  <Mail className="h-4 w-4 text-gray-500" />
+                  <label className="text-sm font-medium text-gray-300">
+                    Notification email
+                  </label>
+                </div>
+                <input
+                  type="email"
+                  value={emailSettings.email}
+                  onChange={(e) => handleEmailSettingChange({ email: e.target.value })}
+                  placeholder="you@company.com"
+                  className="w-full h-10 px-4 rounded-lg text-sm bg-white/5 border border-white/[0.08] text-gray-200 placeholder:text-gray-600 focus:outline-none focus:border-indigo-500/40 focus:ring-2 focus:ring-indigo-500/10 transition-all"
+                />
+              </div>
+
+              {/* Frequency */}
+              <div className="p-4 rounded-xl border border-white/[0.06] bg-[#111111]">
+                <div className="flex items-center gap-2 mb-3">
+                  <Clock className="h-4 w-4 text-gray-500" />
+                  <label className="text-sm font-medium text-gray-300">
+                    Alert frequency
+                  </label>
+                </div>
+                <div className="grid grid-cols-3 gap-2">
+                  {([
+                    { value: "realtime", label: "Real-time", desc: "Instant alerts" },
+                    { value: "daily", label: "Daily digest", desc: "Once per day" },
+                    { value: "weekly", label: "Weekly summary", desc: "Once per week" },
+                  ] as const).map((opt) => (
+                    <button
+                      key={opt.value}
+                      onClick={() => handleEmailSettingChange({ frequency: opt.value })}
+                      className={cn(
+                        "flex flex-col items-center gap-1 p-3 rounded-lg border text-xs font-medium transition-colors",
+                        emailSettings.frequency === opt.value
+                          ? "bg-indigo-500/10 text-indigo-400 border-indigo-500/20"
+                          : "bg-white/[0.02] text-gray-500 border-white/[0.06] hover:text-gray-300 hover:bg-white/5"
+                      )}
+                    >
+                      <span className="font-semibold">{opt.label}</span>
+                      <span className="text-[10px] text-gray-600">{opt.desc}</span>
+                    </button>
+                  ))}
+                </div>
+              </div>
+            </>
+          )}
+
+          {/* Coming soon notice */}
+          <div className="flex items-start gap-3 p-3 rounded-lg bg-amber-500/5 border border-amber-500/10">
+            <AlertCircle className="h-4 w-4 text-amber-400 mt-0.5 shrink-0" />
+            <p className="text-xs text-gray-500">
+              <span className="text-amber-400 font-semibold">Email delivery coming soon</span> — alerts will appear in-app for now. Click the bell icon in the header to view notifications.
+            </p>
+          </div>
+        </div>
+      </div>
+
+      {/* ─── Team Management shortcut ─────────────────────────────────────── */}
+      <div className="mt-12 pt-8 border-t border-white/10">
+        <div className="flex items-center gap-2 mb-1">
+          <Users className="h-5 w-5 text-gray-400" />
+          <h2 className="text-lg font-semibold text-gray-200">Team & Workspace</h2>
+        </div>
+        <p className="text-sm text-gray-600 mb-4">
+          Manage your workspace, invite team members, and configure roles.
+        </p>
+        <Link
+          href="/app/teams"
+          className="flex items-center justify-between p-4 rounded-xl border border-white/[0.06] bg-[#111111] hover:bg-white/[0.03] transition-colors group"
+        >
+          <div className="flex items-center gap-3">
+            <div className="w-9 h-9 rounded-lg bg-indigo-600/20 border border-indigo-500/30 flex items-center justify-center">
+              <Users className="h-4 w-4 text-indigo-400" />
+            </div>
+            <div>
+              <p className="text-sm font-medium text-gray-200 group-hover:text-white transition-colors">
+                Manage Teams
+              </p>
+              <p className="text-xs text-gray-600">
+                Workspaces, members, roles, and invitations
+              </p>
+            </div>
+          </div>
+          <ChevronRight className="h-5 w-5 text-gray-600 group-hover:text-gray-400 transition-colors" />
+        </Link>
       </div>
     </div>
   );

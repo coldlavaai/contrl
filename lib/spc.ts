@@ -590,6 +590,63 @@ export function calculateCapability(
   return { cp, cpk, pp, ppk, ppm, sigmaShort, sigmaLong };
 }
 
+// ── Normality Testing (Jarque-Bera) ──────────────────────────────────────────
+
+export interface NormalityResult {
+  statistic: number;
+  pValue: number;
+  isNormal: boolean;
+  skewness: number;
+  kurtosis: number; // excess kurtosis
+}
+
+/**
+ * Chi-squared CDF for k=2 degrees of freedom: P(X ≤ x) = 1 − e^(−x/2)
+ */
+function chiSquaredCdf2(x: number): number {
+  if (x <= 0) return 0;
+  return 1 - Math.exp(-x / 2);
+}
+
+/**
+ * Jarque-Bera normality test.
+ * JB = (n/6) × (S² + (K−3)² / 4)
+ * Under H0 (normality), JB ~ χ²(2).
+ *
+ * @param values - numeric data array
+ * @param alpha - significance level (default 0.05)
+ * @returns NormalityResult with statistic, p-value, and descriptors
+ */
+export function testNormality(values: number[], alpha = 0.05): NormalityResult {
+  const n = values.length;
+  if (n < 3) {
+    return { statistic: 0, pValue: 1, isNormal: true, skewness: 0, kurtosis: 0 };
+  }
+
+  const m = values.reduce((a, b) => a + b, 0) / n;
+  const variance = values.reduce((a, b) => a + (b - m) ** 2, 0) / n;
+  const std = Math.sqrt(variance);
+
+  if (std === 0) {
+    return { statistic: 0, pValue: 1, isNormal: true, skewness: 0, kurtosis: 0 };
+  }
+
+  const skewness = values.reduce((a, b) => a + ((b - m) / std) ** 3, 0) / n;
+  const kurtosis = values.reduce((a, b) => a + ((b - m) / std) ** 4, 0) / n; // raw kurtosis
+  const excessKurtosis = kurtosis - 3;
+
+  const jb = (n / 6) * (skewness ** 2 + excessKurtosis ** 2 / 4);
+  const pValue = 1 - chiSquaredCdf2(jb);
+
+  return {
+    statistic: jb,
+    pValue,
+    isNormal: pValue >= alpha,
+    skewness,
+    kurtosis: excessKurtosis,
+  };
+}
+
 export function calculateSpc(
   values: number[],
   dates: string[],

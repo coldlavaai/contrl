@@ -1,4 +1,5 @@
 // Chart Library — localStorage persistence + Supabase cloud sync
+import { logAuditEvent } from "@/lib/auditLog";
 
 export interface Annotation {
   dateIndex: number; // index into the dates array
@@ -91,14 +92,37 @@ export function saveChart(
   setLocalCharts(charts);
   // Fire-and-forget cloud save
   saveChartCloud(newChart).catch(console.error);
+  // Audit log
+  try {
+    logAuditEvent({
+      userId: "current",
+      userEmail: "",
+      action: "chart.created",
+      target: newChart.id,
+      targetLabel: newChart.title,
+      details: `Created ${newChart.chartType ?? "xmr"} chart with ${newChart.measure?.values?.length ?? 0} data points`,
+    });
+  } catch { /* ignore in SSR */ }
   return newChart;
 }
 
 export function deleteChart(id: string): void {
+  const chart = getSavedCharts().find((c) => c.id === id);
   const charts = getSavedCharts().filter((c) => c.id !== id);
   setLocalCharts(charts);
   // Fire-and-forget cloud delete
   deleteChartCloud(id).catch(console.error);
+  // Audit log
+  try {
+    logAuditEvent({
+      userId: "current",
+      userEmail: "",
+      action: "chart.deleted",
+      target: id,
+      targetLabel: chart?.title ?? id,
+      details: "Chart permanently deleted",
+    });
+  } catch { /* ignore in SSR */ }
 }
 
 export function updateChart(
@@ -113,6 +137,18 @@ export function updateChart(
   setLocalCharts(charts);
   // Fire-and-forget cloud update
   updateChartCloud(id, partial).catch(console.error);
+  // Audit log
+  try {
+    const changedFields = Object.keys(partial).join(", ");
+    logAuditEvent({
+      userId: "current",
+      userEmail: "",
+      action: "chart.updated",
+      target: id,
+      targetLabel: updated.title,
+      details: `Updated fields: ${changedFields}`,
+    });
+  } catch { /* ignore in SSR */ }
   return updated;
 }
 

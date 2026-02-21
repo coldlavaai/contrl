@@ -3,6 +3,7 @@
 import dynamic from "next/dynamic";
 import { useMemo } from "react";
 import { useChartColors } from "@/hooks/useChartColors";
+import { testNormality } from "@/lib/spc";
 
 const Plot = dynamic(() => import("react-plotly.js"), { ssr: false });
 
@@ -51,6 +52,9 @@ export default function HistogramChart({ values, title, unit, lsl, usl }: Histog
   const colors = useChartColors();
   const { mean, std, skewness, kurtosis } = useMemo(() => calcStats(values), [values]);
 
+  // Jarque-Bera normality test
+  const normality = useMemo(() => testNormality(values), [values]);
+
   const { binCounts, binCenters, binWidth } = useMemo(() => {
     if (values.length === 0) return { binCounts: [], binCenters: [], binWidth: 1 };
 
@@ -83,11 +87,6 @@ export default function HistogramChart({ values, title, unit, lsl, usl }: Histog
     const ys = xs.map((x) => normalPdf(x, mean, std) * values.length * binWidth);
     return { curveX: xs, curveY: ys };
   }, [values, mean, std, binWidth]);
-
-  const isNormal = Math.abs(skewness) < 0.5 && Math.abs(kurtosis) < 1;
-  const interpretation = isNormal
-    ? "Data appears approximately normal"
-    : "Data is skewed/non-normal — interpret control limits with care";
 
   // ── Spec limit vertical lines ─────────────────────────────────────────────
   const maxCount = binCounts.length > 0 ? Math.max(...binCounts, ...curveY) : 1;
@@ -137,7 +136,10 @@ export default function HistogramChart({ values, title, unit, lsl, usl }: Histog
       name: "Normal curve",
       x: curveX,
       y: curveY,
-      line: { color: "rgba(251, 191, 36, 0.85)", width: 2 },
+      line: {
+        color: normality.isNormal ? "rgba(34, 197, 94, 0.85)" : "rgba(251, 191, 36, 0.85)",
+        width: 2.5,
+      },
       hoverinfo: "skip",
     },
     ...specTraces,
@@ -191,6 +193,10 @@ export default function HistogramChart({ values, title, unit, lsl, usl }: Histog
     );
   }
 
+  const pDisplay = normality.pValue < 0.001
+    ? normality.pValue.toExponential(2)
+    : normality.pValue.toFixed(3);
+
   return (
     <div className="space-y-4">
       {/* Histogram plot */}
@@ -212,29 +218,34 @@ export default function HistogramChart({ values, title, unit, lsl, usl }: Histog
         />
       </div>
 
-      {/* Normality stats card */}
+      {/* Normality test result card */}
       <div className={`rounded-xl border p-4 space-y-3 ${
-        isNormal
+        normality.isNormal
           ? "border-green-500/20 bg-green-950/10"
           : "border-amber-500/20 bg-amber-950/10"
       }`}>
         <div className="flex items-start justify-between gap-4 flex-wrap">
           <div>
             <div className={`text-[11px] font-bold uppercase tracking-wider mb-1 ${
-              isNormal ? "text-green-400" : "text-amber-400"
+              normality.isNormal ? "text-green-400" : "text-amber-400"
             }`}>
-              Normality Assessment
+              Normality Test (Jarque-Bera)
             </div>
-            <div className={`text-sm font-medium ${isNormal ? "text-green-300" : "text-amber-300"}`}>
-              {isNormal ? "✓ " : "⚠ "}{interpretation}
+            <div className={`text-sm font-medium ${normality.isNormal ? "text-green-300" : "text-amber-300"}`}>
+              {normality.isNormal
+                ? `✓ Data appears normally distributed (p = ${pDisplay})`
+                : `⚠ Data is NOT normally distributed (p = ${pDisplay})`}
+            </div>
+            <div className="text-[10px] text-gray-600 mt-1">
+              JB statistic = {normality.statistic.toFixed(3)} · α = 0.05
             </div>
           </div>
           <div className={`text-[10px] font-semibold px-2.5 py-1 rounded-lg border ${
-            isNormal
+            normality.isNormal
               ? "bg-green-500/10 border-green-500/25 text-green-400"
               : "bg-amber-500/10 border-amber-500/25 text-amber-400"
           }`}>
-            {isNormal ? "NORMAL" : "NON-NORMAL"}
+            {normality.isNormal ? "NORMAL" : "NON-NORMAL"}
           </div>
         </div>
 

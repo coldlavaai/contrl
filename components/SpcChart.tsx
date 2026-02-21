@@ -5,6 +5,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { calculateSpc, calculateCapability, SpcResult, NelsonRuleConfig, DEFAULT_NELSON_RULES, NELSON_RULE_NAMES } from "@/lib/spc";
 import { Annotation, TargetLine, saveChart, ChartColors } from "@/lib/chartStorage";
 import HistogramChart from "@/components/HistogramChart";
+import BoxPlot from "@/components/BoxPlot";
 import { usePerChartColors, type ColorKey } from "@/hooks/usePerChartColors";
 import { ChartColorPickerModal } from "@/components/ChartColorPickerModal";
 import { ChartValuesDisplay } from "@/components/ChartValuesDisplay";
@@ -248,8 +249,12 @@ export default function SpcChart({
   // ── Chart container ref for export ─────────────────────────────────────────
   const chartContainerRef = useRef<HTMLDivElement>(null);
 
-  // ── Chart tabs: Control Chart vs Distribution ─────────────────────────────
-  const [activeTab, setActiveTab] = useState<"control" | "distribution">("control");
+  // ── Chart tabs: Control Chart vs Distribution vs Box Plot ─────────────────
+  const [activeTab, setActiveTab] = useState<"control" | "distribution" | "boxplot">("control");
+
+  // ── Date range filter ──────────────────────────────────────────────────────
+  const [dateFrom, setDateFrom] = useState("");
+  const [dateTo, setDateTo] = useState("");
 
   // ── Save feedback ──────────────────────────────────────────────────────────
   const [savedFlash, setSavedFlash] = useState(false);
@@ -276,12 +281,62 @@ export default function SpcChart({
     setTimeout(() => setSavedFlash(false), 2000);
   };
 
+  // ── Date range filtering ─────────────────────────────────────────────────
+  const isDateFiltered = dateFrom !== "" || dateTo !== "";
+
+  const { filteredValues, filteredDates, filteredSplitIndices, filteredOmittedIndices } = useMemo(() => {
+    if (!isDateFiltered) {
+      return {
+        filteredValues: values,
+        filteredDates: dates,
+        filteredSplitIndices: splitIndices,
+        filteredOmittedIndices: omittedIndices,
+      };
+    }
+
+    const fromDate = dateFrom || "";
+    const toDate = dateTo || "";
+    const indexMap: number[] = []; // original index -> filtered index
+
+    const fValues: number[] = [];
+    const fDates: string[] = [];
+
+    for (let i = 0; i < dates.length; i++) {
+      const d = dates[i];
+      if (fromDate && d < fromDate) continue;
+      if (toDate && d > toDate) continue;
+      indexMap.push(i);
+      fValues.push(values[i]);
+      fDates.push(d);
+    }
+
+    const origToNew = new Map<number, number>();
+    indexMap.forEach((origIdx, newIdx) => {
+      origToNew.set(origIdx, newIdx);
+    });
+
+    const fSplits = splitIndices
+      .filter((s) => origToNew.has(s))
+      .map((s) => origToNew.get(s)!);
+
+    const fOmitted = omittedIndices
+      .filter((o) => origToNew.has(o))
+      .map((o) => origToNew.get(o)!);
+
+    return {
+      filteredValues: fValues,
+      filteredDates: fDates,
+      filteredSplitIndices: fSplits,
+      filteredOmittedIndices: fOmitted,
+    };
+  }, [values, dates, splitIndices, omittedIndices, dateFrom, dateTo, isDateFiltered]);
+
   // ── SPC calculation (uses omittedIndices) ──────────────────────────────────
-  const omittedSet = useMemo(() => new Set(omittedIndices), [omittedIndices]);
+  const omittedSet = useMemo(() => new Set(filteredOmittedIndices), [filteredOmittedIndices]);
 
   const spc: SpcResult = useMemo(
-    () => calculateSpc(values, dates, splitIndices, { method, splitModes, frozenLimits, omittedIndices, nelsonRules }),
-    [values, dates, splitIndices, method, splitModes, frozenLimits, omittedIndices, nelsonRules]
+    () => calculateSpc(filteredValues, filteredDates, filteredSplitIndices, { method, splitModes, frozenLimits, omittedIndices: filteredOmittedIndices, nelsonRules }),
+    [filteredValues, filteredDates, filteredSplitIndices, method, splitModes, frozenLimits, filteredOmittedIndices, nelsonRules]
   );
 
   const segmentSignals = useMemo(
@@ -313,9 +368,9 @@ export default function SpcChart({
       ? spc.points.filter((p) => !omittedSet.has(p.index)).reduce((a, p) => a + p.value, 0) /
         spc.points.filter((p) => !omittedSet.has(p.index)).length
       : 0;
-    const includedValues = values.filter((_, i) => !omittedSet.has(i));
+    const includedValues = filteredValues.filter((_, i) => !omittedSet.has(i));
     return calculateCapability(includedValues, spc.mrMean, overallMean, lsl, usl);
-  }, [values, spc, omittedSet, lsl, usl]);
+  }, [filteredValues, spc, omittedSet, lsl, usl]);
 
   // ── Nelson rule violation counts ────────────────────────────────────────
   const nelsonViolationCounts = useMemo(() => {
@@ -343,7 +398,7 @@ export default function SpcChart({
       ppk: capability?.ppk,
       ppm: capability?.ppm,
       signalCount: totalSignals,
-      dataPoints: values.filter((_, i) => !omittedSet.has(i)).length,
+      dataPoints: filteredValues.filter((_, i) => !omittedSet.has(i)).length,
       lsl,
       usl,
       mrMean: spc.mrMean,
@@ -352,7 +407,7 @@ export default function SpcChart({
       method,
       ruleViolations: Object.keys(nelsonViolationCounts).length > 0 ? nelsonViolationCounts : undefined,
     };
-  }, [spc, capability, omittedSet, values, lsl, usl, unit, method, nelsonViolationCounts]);
+  }, [spc, capability, omittedSet, filteredValues, lsl, usl, unit, method, nelsonViolationCounts]);
 
   // ── Feature 3: Trend line calculations ──────────────────────────────────
   const trendTraces = useMemo(() => {
@@ -400,10 +455,10 @@ export default function SpcChart({
   const commonMarker = { size: 7, line: { width: 1, color: "#1e1e2e" } };
 
   // ── Split shapes ──────────────────────────────────────────────────────────
-  const splitShapes = splitIndices.map((idx) => ({
+  const splitShapes = filteredSplitIndices.map((idx) => ({
     type: "line" as const,
-    x0: dates[idx],
-    x1: dates[idx],
+    x0: filteredDates[idx],
+    x1: filteredDates[idx],
     y0: 0,
     y1: 1,
     yref: "paper" as const,
@@ -478,7 +533,7 @@ export default function SpcChart({
   const segmentLineTraces: any[] = [];
   spc.segments.forEach((seg, i) => {
     // Include all dates in segment range (including omitted positions — line spans continuously)
-    const segDates = dates.slice(seg.startIndex, seg.endIndex + 1);
+    const segDates = filteredDates.slice(seg.startIndex, seg.endIndex + 1);
     const n = seg.endIndex - seg.startIndex + 1;
     const isFirst = i === 0;
 
@@ -525,9 +580,9 @@ export default function SpcChart({
   // ── Plotly annotations ────────────────────────────────────────────────────
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const plotlyAnnotations: any[] = [
-    ...annotations.map((ann) => ({
-      x: dates[ann.dateIndex],
-      y: values[ann.dateIndex],
+    ...annotations.filter((ann) => ann.dateIndex < filteredDates.length).map((ann) => ({
+      x: filteredDates[ann.dateIndex],
+      y: filteredValues[ann.dateIndex],
       text: ann.text,
       showarrow: true,
       arrowhead: 2,
@@ -544,8 +599,8 @@ export default function SpcChart({
 
   // ── Non-omitted data connecting line ──────────────────────────────────────
   // Build x/y with nulls at omitted positions to break the line
-  const lineX = dates.map((d, i) => (omittedSet.has(i) ? null : d));
-  const lineY = values.map((v, i) => (omittedSet.has(i) ? null : v));
+  const lineX = filteredDates.map((d, i) => (omittedSet.has(i) ? null : d));
+  const lineY = filteredValues.map((v, i) => (omittedSet.has(i) ? null : v));
 
   // ── Main chart data ───────────────────────────────────────────────────────
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -620,8 +675,8 @@ export default function SpcChart({
   ];
 
   // Sparse ticks: max 8 evenly-spaced labels regardless of dataset size
-  const tickStep = Math.max(1, Math.ceil(dates.length / 8));
-  const sparseTicks = dates.filter((_, i) => i % tickStep === 0);
+  const tickStep = Math.max(1, Math.ceil(filteredDates.length / 8));
+  const sparseTicks = filteredDates.filter((_, i) => i % tickStep === 0);
 
   const layout: Partial<Plotly.Layout> = {
     paper_bgcolor: colors.background,
@@ -683,7 +738,7 @@ export default function SpcChart({
     {
       type: "bar",
       name: "Moving Range",
-      x: dates,
+      x: filteredDates,
       y: spc.movingRanges,
       marker: {
         color: spc.movingRanges.map((v, i) =>
@@ -697,8 +752,8 @@ export default function SpcChart({
       type: "scatter",
       mode: "lines",
       name: "MR Mean (R̄)",
-      x: dates,
-      y: Array(dates.length).fill(spc.mrMean),
+      x: filteredDates,
+      y: Array(filteredDates.length).fill(spc.mrMean),
       line: { color: method === "median" ? colors.medianLine : colors.meanLine, width: 1.5, dash: "dash" },
       hovertemplate: `R̄: ${spc.mrMean.toFixed(3)}<extra></extra>`,
     },
@@ -706,8 +761,8 @@ export default function SpcChart({
       type: "scatter",
       mode: "lines",
       name: "MR UCL",
-      x: dates,
-      y: Array(dates.length).fill(spc.mrUcl),
+      x: filteredDates,
+      y: Array(filteredDates.length).fill(spc.mrUcl),
       line: { color: colors.uclLine, width: 1.5, dash: "dash" },
       hovertemplate: `MR UCL: ${spc.mrUcl.toFixed(3)}<extra></extra>`,
     },
@@ -802,7 +857,7 @@ export default function SpcChart({
     }
 
     const clickedX = point.x;
-    const actualIndex = dates.indexOf(String(clickedX));
+    const actualIndex = filteredDates.indexOf(String(clickedX));
     if (actualIndex === -1) return;
 
     // Omit mode
@@ -917,8 +972,8 @@ export default function SpcChart({
   const activeMode = addSplitMode || addNoteMode || omitMode;
   const centreLabel = method === "median" ? "M̃ (Median)" : "X\u0304 (Mean)";
 
-  // Values used for histogram (all, including omitted — they represent the real data distribution)
-  const histogramValues = values;
+  // Values used for histogram (use filtered values if date range is active)
+  const histogramValues = filteredValues;
 
   // ── Toolbar button style helper ───────────────────────────────────────────
   const toolbarBtn = (active: boolean, activeStyle: string) =>
@@ -1499,7 +1554,42 @@ export default function SpcChart({
         </div>
       )}
 
-      {/* ── Tab navigation (Control Chart / Distribution) ── */}
+      {/* ── Date Range Filter ── */}
+      <div className="flex items-center gap-3 flex-wrap">
+        <div className="flex items-center gap-2 text-xs">
+          <span className="text-gray-500 font-medium">Filter:</span>
+          <input
+            type="text"
+            placeholder="From date"
+            value={dateFrom}
+            onChange={(e) => setDateFrom(e.target.value)}
+            className="w-28 bg-white/5 border border-white/10 rounded-lg px-2.5 py-1.5 text-xs text-white placeholder-gray-600 outline-none focus:border-indigo-500 transition-colors"
+          />
+          <span className="text-gray-600">→</span>
+          <input
+            type="text"
+            placeholder="To date"
+            value={dateTo}
+            onChange={(e) => setDateTo(e.target.value)}
+            className="w-28 bg-white/5 border border-white/10 rounded-lg px-2.5 py-1.5 text-xs text-white placeholder-gray-600 outline-none focus:border-indigo-500 transition-colors"
+          />
+          {isDateFiltered && (
+            <button
+              onClick={() => { setDateFrom(""); setDateTo(""); }}
+              className="px-2.5 py-1.5 rounded-lg text-xs text-indigo-400 border border-indigo-500/30 hover:border-indigo-500/60 hover:bg-indigo-950/20 transition-all"
+            >
+              Reset
+            </button>
+          )}
+          {isDateFiltered && (
+            <span className="text-[10px] text-indigo-400/70">
+              Showing {filteredValues.length} of {values.length} points
+            </span>
+          )}
+        </div>
+      </div>
+
+      {/* ── Tab navigation (Control Chart / Distribution / Box Plot) ── */}
       <div className="flex items-center gap-0 rounded-lg border border-white/10 bg-white/5 overflow-hidden w-fit">
         <button
           onClick={() => setActiveTab("control")}
@@ -1530,6 +1620,23 @@ export default function SpcChart({
             <rect x="16" y="11" width="4" height="10" rx="1" />
           </svg>
           Distribution
+        </button>
+        <button
+          onClick={() => setActiveTab("boxplot")}
+          className={`px-5 py-2 text-sm font-semibold transition-all duration-150 select-none flex items-center gap-2 ${
+            activeTab === "boxplot"
+              ? "bg-indigo-600 text-white"
+              : "text-gray-400 hover:text-gray-200"
+          }`}
+        >
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none"
+            stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <rect x="4" y="6" width="6" height="12" rx="1" />
+            <line x1="7" y1="3" x2="7" y2="6" />
+            <line x1="7" y1="18" x2="7" y2="21" />
+            <line x1="4" y1="12" x2="10" y2="12" />
+          </svg>
+          Box Plot
         </button>
       </div>
 
@@ -1574,9 +1681,9 @@ export default function SpcChart({
                   R̄ = {spc.mrMean.toFixed(3)}
                   {"  ·  "}
                   UCL = {spc.mrUcl.toFixed(3)}
-                  {omittedIndices.length > 0 && (
+                  {filteredOmittedIndices.length > 0 && (
                     <span className="ml-2 text-gray-700">
-                      · {omittedIndices.length} omitted
+                      · {filteredOmittedIndices.length} omitted
                     </span>
                   )}
                 </span>
@@ -1604,6 +1711,17 @@ export default function SpcChart({
           unit={unit}
           lsl={lsl}
           usl={usl}
+        />
+      )}
+
+      {/* ── Tab: Box Plot ── */}
+      {activeTab === "boxplot" && (
+        <BoxPlot
+          values={filteredValues}
+          dates={filteredDates}
+          title={localTitle}
+          unit={unit}
+          splitIndices={filteredSplitIndices}
         />
       )}
 
@@ -1644,15 +1762,15 @@ export default function SpcChart({
           >
             <div className="text-xs text-amber-400 font-semibold mb-2">
               {popover.existingText
-                ? `Edit note — ${dates[popover.dateIndex]}`
-                : `Add note — ${dates[popover.dateIndex]}`}
+                ? `Edit note — ${filteredDates[popover.dateIndex]}`
+                : `Add note — ${filteredDates[popover.dateIndex]}`}
             </div>
             <input
               ref={popoverInputRef}
               value={popoverDraft}
               onChange={(e) => setPopoverDraft(e.target.value)}
               onKeyDown={(e) => { if (e.key === "Enter") commitAnnotation(); if (e.key === "Escape") setPopover(null); }}
-              placeholder={`Note for ${dates[popover.dateIndex]}…`}
+              placeholder={`Note for ${filteredDates[popover.dateIndex]}…`}
               className="w-full bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-sm text-white placeholder-gray-600 outline-none focus:border-amber-400/50 transition-colors"
             />
             <div className="flex items-center gap-2 mt-3">
@@ -1691,7 +1809,7 @@ export default function SpcChart({
             </h3>
             {hasMultipleSegments && (
               <span className="text-xs text-gray-600">
-                {spc.segments.length} segments · {splitIndices.length} split{splitIndices.length !== 1 ? "s" : ""}
+                {spc.segments.length} segments · {filteredSplitIndices.length} split{filteredSplitIndices.length !== 1 ? "s" : ""}
               </span>
             )}
           </div>
@@ -1703,12 +1821,12 @@ export default function SpcChart({
           >
             {spc.segments.map((seg, i) => {
               const sigInfo = segmentSignals[i];
-              const splitAfter = splitIndices[i];
+              const splitAfter = filteredSplitIndices[i];
               const n = seg.endIndex - seg.startIndex + 1;
-              const startDate = dates[seg.startIndex] ?? `Point ${seg.startIndex + 1}`;
-              const endDate = dates[seg.endIndex] ?? `Point ${seg.endIndex + 1}`;
+              const startDate = filteredDates[seg.startIndex] ?? `Point ${seg.startIndex + 1}`;
+              const endDate = filteredDates[seg.endIndex] ?? `Point ${seg.endIndex + 1}`;
               const totalSignals = sigInfo.runCount + sigInfo.trendCount;
-              const openingSplitIdx = i > 0 ? splitIndices[i - 1] : null;
+              const openingSplitIdx = i > 0 ? filteredSplitIndices[i - 1] : null;
               const isRunSplit = openingSplitIdx !== null && splitModes[openingSplitIdx] === "run";
 
               // Trend slope for this segment
@@ -1749,9 +1867,9 @@ export default function SpcChart({
                       </div>
                       <div className="text-[11px] text-gray-600 mt-0.5">
                         n = {n} data point{n !== 1 ? "s" : ""}
-                        {omittedIndices.filter((oi) => oi >= seg.startIndex && oi <= seg.endIndex).length > 0 && (
+                        {filteredOmittedIndices.filter((oi) => oi >= seg.startIndex && oi <= seg.endIndex).length > 0 && (
                           <span className="ml-1.5 text-gray-700">
-                            ({omittedIndices.filter((oi) => oi >= seg.startIndex && oi <= seg.endIndex).length} omitted)
+                            ({filteredOmittedIndices.filter((oi) => oi >= seg.startIndex && oi <= seg.endIndex).length} omitted)
                           </span>
                         )}
                       </div>

@@ -25,6 +25,9 @@ import {
   Waypoints,
   Minus,
   SlidersHorizontal,
+  Users,
+  ScrollText,
+  Code2,
 } from "lucide-react";
 
 interface AppSidebarProps {
@@ -32,12 +35,27 @@ interface AppSidebarProps {
   onToggle: () => void;
 }
 
-const mainNavItems = [
+// ─── Navigation Categories ───────────────────────────────────────────────────
+
+const chartsItems = [
   { href: "/app", label: "Dashboard", icon: LayoutDashboard, exact: true },
   { href: "/app/new", label: "New Chart", icon: Plus, exact: false },
   { href: "/app/library", label: "Library", icon: BookOpen, exact: false },
+];
+
+const analysisItems = [
   { href: "/app/analytics", label: "Analytics", icon: BarChart3, exact: false },
+];
+
+const communicationItems = [
   { href: "/app/communications", label: "Communications", icon: MessageSquare, exact: false },
+];
+
+const adminItems = [
+  { href: "/app/teams", label: "Teams", icon: Users, exact: false },
+  { href: "/app/audit", label: "Audit Log", icon: ScrollText, exact: false },
+  { href: "/app/api-docs", label: "API Docs", icon: Code2, exact: false },
+  { href: "/app/settings", label: "Settings", icon: Settings, exact: false },
 ];
 
 const chartTypeItems = [
@@ -58,9 +76,7 @@ const subgroupChartItems = [
   { href: "/app/new?type=moving-avg", label: "Moving Average", icon: SlidersHorizontal, typeParam: "moving-avg" },
 ];
 
-const bottomNavItems = [
-  { href: "/app/settings", label: "Settings", icon: Settings, exact: false },
-];
+// ─── NavItem ─────────────────────────────────────────────────────────────────
 
 interface NavItemProps {
   href: string;
@@ -96,6 +112,19 @@ function NavItem({ href, label, icon: Icon, isActive, collapsed }: NavItemProps)
   );
 }
 
+function SectionLabel({ label, collapsed }: { label: string; collapsed: boolean }) {
+  if (collapsed) {
+    return <div className="my-2 mx-4 h-px bg-white/[0.06]" />;
+  }
+  return (
+    <div className="text-[10px] text-gray-600 uppercase tracking-wider px-5 pt-2 pb-1.5 font-semibold">
+      {label}
+    </div>
+  );
+}
+
+// ─── Sidebar ─────────────────────────────────────────────────────────────────
+
 export default function AppSidebar({ collapsed, onToggle }: AppSidebarProps) {
   const pathname = usePathname();
   const searchParams = useSearchParams();
@@ -103,7 +132,6 @@ export default function AppSidebar({ collapsed, onToggle }: AppSidebarProps) {
 
   function isNavActive(href: string, exact = false): boolean {
     if (exact) return pathname === href;
-    // For /app/new without type param — only active if no type or exact path match
     if (href === "/app/new" && !href.includes("?")) {
       return pathname === "/app/new" && !currentType;
     }
@@ -124,32 +152,61 @@ export default function AppSidebar({ collapsed, onToggle }: AppSidebarProps) {
         collapsed ? "w-16" : "w-64"
       )}
     >
-      {/* Main navigation */}
       <nav className="flex-1 overflow-y-auto py-4">
-        {/* Main items */}
-        <div className="space-y-0.5 px-2">
-          {mainNavItems.map((item) => (
-            <NavItem
-              key={item.href}
-              href={item.href}
-              label={item.label}
-              icon={item.icon}
-              isActive={isNavActive(item.href, item.exact)}
-              collapsed={collapsed}
-            />
-          ))}
+        {/* Charts */}
+        <div>
+          <SectionLabel label="Charts" collapsed={collapsed} />
+          <div className="space-y-0.5 px-2">
+            {chartsItems.map((item) => (
+              <NavItem
+                key={item.href}
+                href={item.href}
+                label={item.label}
+                icon={item.icon}
+                isActive={isNavActive(item.href, item.exact)}
+                collapsed={collapsed}
+              />
+            ))}
+          </div>
         </div>
 
-        {/* Chart Types section */}
+        {/* Analysis */}
         <div className="mt-4">
-          {!collapsed && (
-            <div className="text-[10px] text-gray-600 uppercase tracking-wider px-5 pt-2 pb-1.5 font-semibold">
-              Chart Types
-            </div>
-          )}
-          {collapsed && (
-            <div className="my-2 mx-4 h-px bg-white/[0.06]" />
-          )}
+          <SectionLabel label="Analysis" collapsed={collapsed} />
+          <div className="space-y-0.5 px-2">
+            {analysisItems.map((item) => (
+              <NavItem
+                key={item.href}
+                href={item.href}
+                label={item.label}
+                icon={item.icon}
+                isActive={isNavActive(item.href, item.exact)}
+                collapsed={collapsed}
+              />
+            ))}
+          </div>
+        </div>
+
+        {/* Communication */}
+        <div className="mt-4">
+          <SectionLabel label="Communication" collapsed={collapsed} />
+          <div className="space-y-0.5 px-2">
+            {communicationItems.map((item) => (
+              <NavItem
+                key={item.href}
+                href={item.href}
+                label={item.label}
+                icon={item.icon}
+                isActive={isNavActive(item.href, item.exact)}
+                collapsed={collapsed}
+              />
+            ))}
+          </div>
+        </div>
+
+        {/* Chart Types */}
+        <div className="mt-4">
+          <SectionLabel label="Chart Types" collapsed={collapsed} />
           <div className="space-y-0.5 px-2">
             {chartTypeItems.map((item) => (
               <NavItem
@@ -164,16 +221,9 @@ export default function AppSidebar({ collapsed, onToggle }: AppSidebarProps) {
           </div>
         </div>
 
-        {/* Subgroup & Advanced Charts section */}
+        {/* Subgroup & Advanced */}
         <div className="mt-4">
-          {!collapsed && (
-            <div className="text-[10px] text-gray-600 uppercase tracking-wider px-5 pt-2 pb-1.5 font-semibold">
-              Subgroup & Advanced
-            </div>
-          )}
-          {collapsed && (
-            <div className="my-2 mx-4 h-px bg-white/[0.06]" />
-          )}
+          <SectionLabel label="Subgroup & Advanced" collapsed={collapsed} />
           <div className="space-y-0.5 px-2">
             {subgroupChartItems.map((item) => (
               <NavItem
@@ -187,21 +237,24 @@ export default function AppSidebar({ collapsed, onToggle }: AppSidebarProps) {
             ))}
           </div>
         </div>
-      </nav>
 
-      {/* Bottom: Settings */}
-      <div className="border-t border-white/[0.06] px-2 py-2">
-        {bottomNavItems.map((item) => (
-          <NavItem
-            key={item.href}
-            href={item.href}
-            label={item.label}
-            icon={item.icon}
-            isActive={isNavActive(item.href, item.exact)}
-            collapsed={collapsed}
-          />
-        ))}
-      </div>
+        {/* Admin */}
+        <div className="mt-4">
+          <SectionLabel label="Admin" collapsed={collapsed} />
+          <div className="space-y-0.5 px-2">
+            {adminItems.map((item) => (
+              <NavItem
+                key={item.href}
+                href={item.href}
+                label={item.label}
+                icon={item.icon}
+                isActive={isNavActive(item.href, item.exact)}
+                collapsed={collapsed}
+              />
+            ))}
+          </div>
+        </div>
+      </nav>
 
       {/* Collapse toggle */}
       <button
