@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo } from "react";
+import { useMemo, useRef } from "react";
 import dynamic from "next/dynamic";
 import {
   calculatePChart,
@@ -8,6 +8,8 @@ import {
   calculateCChart,
   calculateUChart,
 } from "@/lib/attributeCharts";
+import ExportDropdown from "@/components/ExportDropdown";
+import { ExportStats } from "@/lib/exportUtils";
 
 const Plot = dynamic(() => import("react-plotly.js"), { ssr: false });
 
@@ -75,7 +77,7 @@ export function PChartComponent({ defectives, sampleSizes, dates, title }: PChar
     },
   ];
 
-  return <BaseAttributeChart traces={traces} dateLabels={dateLabels} title={title} subtitle="p-Chart — Proportion Defective" yAxisTitle="Proportion (p)" signalCount={signalCount} stats={`p̄ = ${pBar.toFixed(4)}`} />;
+  return <BaseAttributeChart traces={traces} dateLabels={dateLabels} title={title} subtitle="p-Chart — Proportion Defective" yAxisTitle="Proportion (p)" signalCount={signalCount} stats={`p̄ = ${pBar.toFixed(4)}`} exportStats={{ mean: pBar, signalCount, dataPoints: points.length }} />;
 }
 
 // ─── np-Chart ────────────────────────────────────────────────────────────────
@@ -142,7 +144,7 @@ export function NpChartComponent({ defectives, sampleSize, dates, title }: NpCha
     },
   ];
 
-  return <BaseAttributeChart traces={traces} dateLabels={dateLabels} title={title} subtitle={`np-Chart — Count Defective (n=${sampleSize})`} yAxisTitle="Count of Defectives" signalCount={signalCount} stats={`n̄p̄ = ${npBar.toFixed(2)} · UCL = ${ucl.toFixed(2)} · LCL = ${lcl.toFixed(2)}`} />;
+  return <BaseAttributeChart traces={traces} dateLabels={dateLabels} title={title} subtitle={`np-Chart — Count Defective (n=${sampleSize})`} yAxisTitle="Count of Defectives" signalCount={signalCount} stats={`n̄p̄ = ${npBar.toFixed(2)} · UCL = ${ucl.toFixed(2)} · LCL = ${lcl.toFixed(2)}`} exportStats={{ mean: npBar, ucl, lcl, signalCount, dataPoints: points.length }} />;
 }
 
 // ─── c-Chart ─────────────────────────────────────────────────────────────────
@@ -208,7 +210,7 @@ export function CChartComponent({ defects, dates, title }: CChartProps) {
     },
   ];
 
-  return <BaseAttributeChart traces={traces} dateLabels={dateLabels} title={title} subtitle="c-Chart — Defect Count per Period" yAxisTitle="Count of Defects" signalCount={signalCount} stats={`c̄ = ${cBar.toFixed(2)} · UCL = ${ucl.toFixed(2)} · LCL = ${lcl.toFixed(2)}`} />;
+  return <BaseAttributeChart traces={traces} dateLabels={dateLabels} title={title} subtitle="c-Chart — Defect Count per Period" yAxisTitle="Count of Defects" signalCount={signalCount} stats={`c̄ = ${cBar.toFixed(2)} · UCL = ${ucl.toFixed(2)} · LCL = ${lcl.toFixed(2)}`} exportStats={{ mean: cBar, ucl, lcl, signalCount, dataPoints: points.length }} />;
 }
 
 // ─── u-Chart ─────────────────────────────────────────────────────────────────
@@ -275,7 +277,7 @@ export function UChartComponent({ defects, units, dates, title }: UChartProps) {
     },
   ];
 
-  return <BaseAttributeChart traces={traces} dateLabels={dateLabels} title={title} subtitle="u-Chart — Defect Rate per Unit" yAxisTitle="Defects per Unit (u)" signalCount={signalCount} stats={`ū = ${uBar.toFixed(4)}`} />;
+  return <BaseAttributeChart traces={traces} dateLabels={dateLabels} title={title} subtitle="u-Chart — Defect Rate per Unit" yAxisTitle="Defects per Unit (u)" signalCount={signalCount} stats={`ū = ${uBar.toFixed(4)}`} exportStats={{ mean: uBar, signalCount, dataPoints: points.length }} />;
 }
 
 // ─── Shared base chart ────────────────────────────────────────────────────────
@@ -288,6 +290,8 @@ interface BaseAttributeChartProps {
   yAxisTitle: string;
   signalCount: number;
   stats: string;
+  /** Export stats for PDF generation */
+  exportStats?: ExportStats;
 }
 
 function BaseAttributeChart({
@@ -297,7 +301,9 @@ function BaseAttributeChart({
   yAxisTitle,
   signalCount,
   stats,
+  exportStats,
 }: BaseAttributeChartProps) {
+  const chartRef = useRef<HTMLDivElement>(null);
   const layout: Partial<Plotly.Layout> = {
     paper_bgcolor: "transparent",
     plot_bgcolor: "transparent",
@@ -334,6 +340,8 @@ function BaseAttributeChart({
     height: 380,
   };
 
+  const displayTitle = title ? `${title} — ${subtitle}` : subtitle;
+
   return (
     <div className="bg-white/[0.025] border border-white/8 rounded-2xl overflow-hidden">
       <div className="flex items-center justify-between px-5 py-3 border-b border-white/5">
@@ -351,21 +359,32 @@ function BaseAttributeChart({
             Control limits
           </span>
         </div>
-        <div className="text-xs text-gray-500 shrink-0 ml-4">
-          {stats}
-          {signalCount > 0 && (
-            <span className="ml-3 text-red-400 font-medium">
-              {signalCount} signal{signalCount !== 1 ? "s" : ""}
-            </span>
+        <div className="flex items-center gap-3 shrink-0 ml-4">
+          <div className="text-xs text-gray-500">
+            {stats}
+            {signalCount > 0 && (
+              <span className="ml-3 text-red-400 font-medium">
+                {signalCount} signal{signalCount !== 1 ? "s" : ""}
+              </span>
+            )}
+          </div>
+          {exportStats && (
+            <ExportDropdown
+              chartContainerRef={chartRef}
+              title={displayTitle}
+              stats={exportStats}
+            />
           )}
         </div>
       </div>
-      <Plot
-        data={traces}
-        layout={layout}
-        config={{ displayModeBar: false, responsive: true }}
-        style={{ width: "100%" }}
-      />
+      <div ref={chartRef}>
+        <Plot
+          data={traces}
+          layout={layout}
+          config={{ displayModeBar: false, responsive: true }}
+          style={{ width: "100%" }}
+        />
+      </div>
     </div>
   );
 }

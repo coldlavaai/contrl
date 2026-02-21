@@ -1,8 +1,10 @@
 "use client";
 
-import { useState, useMemo } from "react";
+import { useState, useMemo, useRef } from "react";
 import dynamic from "next/dynamic";
 import { calculateCusum } from "@/lib/cusum";
+import ExportDropdown from "@/components/ExportDropdown";
+import { ExportStats } from "@/lib/exportUtils";
 
 const Plot = dynamic(() => import("react-plotly.js"), { ssr: false });
 
@@ -147,6 +149,13 @@ export default function CusumChart({ values, dates, title }: CusumChartProps) {
   };
 
   const signalCount = points.filter((p) => p.signalPos || p.signalNeg).length;
+  const chartRef = useRef<HTMLDivElement>(null);
+
+  const exportStats: ExportStats = useMemo(() => ({
+    mean: mu0 ?? defaultMu0,
+    signalCount,
+    dataPoints: values.length,
+  }), [mu0, defaultMu0, signalCount, values.length]);
 
   return (
     <div className="bg-white/[0.025] border border-white/8 rounded-2xl overflow-hidden">
@@ -182,13 +191,20 @@ export default function CusumChart({ values, dates, title }: CusumChartProps) {
             Reset
           </button>
         )}
-        <div className="ml-auto text-xs text-gray-500">
-          k = {result.k.toFixed(3)} · σ̂ = {result.sigma.toFixed(3)}
-          {signalCount > 0 && (
-            <span className="ml-3 text-red-400 font-medium">
-              {signalCount} signal{signalCount !== 1 ? "s" : ""}
-            </span>
-          )}
+        <div className="ml-auto flex items-center gap-3 text-xs text-gray-500">
+          <span>
+            k = {result.k.toFixed(3)} · σ̂ = {result.sigma.toFixed(3)}
+            {signalCount > 0 && (
+              <span className="ml-3 text-red-400 font-medium">
+                {signalCount} signal{signalCount !== 1 ? "s" : ""}
+              </span>
+            )}
+          </span>
+          <ExportDropdown
+            chartContainerRef={chartRef}
+            title={title ? `${title} — CuSum` : "CuSum Chart"}
+            stats={exportStats}
+          />
         </div>
       </div>
 
@@ -212,12 +228,14 @@ export default function CusumChart({ values, dates, title }: CusumChartProps) {
         </span>
       </div>
 
-      <Plot
-        data={traces}
-        layout={layout}
-        config={{ displayModeBar: false, responsive: true }}
-        style={{ width: "100%" }}
-      />
+      <div ref={chartRef}>
+        <Plot
+          data={traces}
+          layout={layout}
+          config={{ displayModeBar: false, responsive: true }}
+          style={{ width: "100%" }}
+        />
+      </div>
     </div>
   );
 }

@@ -70,25 +70,55 @@
   body {
     background: white !important;
     color: black !important;
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
   }
 
-  /* Hide navigation, toolbars, and controls when printing */
+  /* Hide navigation, toolbars, sidebars, controls, and interactive elements */
   nav,
+  header,
   .no-print,
   button:not(.print-keep),
   [class*="toolbar"],
-  [class*="sidebar"] {
+  [class*="sidebar"],
+  [class*="Sidebar"],
+  [class*="BottomNav"],
+  [class*="MobileBottom"],
+  [class*="AppHeader"],
+  [class*="AppSidebar"],
+  [role="navigation"],
+  [data-sidebar],
+  aside {
     display: none !important;
   }
 
-  /* Ensure charts take full width */
+  /* Hide interactive panels and dropdowns */
+  [class*="dropdown"],
+  [class*="popover"],
+  [class*="modal"],
+  [class*="Dialog"],
+  [class*="ColorPicker"],
+  input,
+  select,
+  textarea {
+    display: none !important;
+  }
+
+  /* Ensure charts render properly */
   .js-plotly-plot {
     page-break-inside: avoid;
     max-width: 100% !important;
+    break-inside: avoid;
+  }
+
+  /* Plotly chart backgrounds should be white for print */
+  .js-plotly-plot .plotly .main-svg {
+    background: white !important;
   }
 
   /* Show titles and labels clearly */
-  h1, h2, h3, h4, h5, h6 {
+  h1, h2, h3, h4, h5, h6,
+  span, div, p {
     color: black !important;
     page-break-after: avoid;
   }
@@ -96,12 +126,58 @@
   /* Avoid breaking charts across pages */
   .chart-container,
   [class*="SpcChart"],
-  [class*="Chart"] {
+  [class*="Chart"],
+  [class*="rounded-xl"],
+  [class*="rounded-2xl"] {
     page-break-inside: avoid;
+    break-inside: avoid;
   }
 
-  /* Remove shadows and borders for cleaner print */
+  /* Statistics cards should print cleanly */
+  [class*="grid"] {
+    break-inside: avoid;
+  }
+
+  /* Remove dark backgrounds and shadows */
   * {
     box-shadow: none !important;
+    text-shadow: none !important;
+  }
+
+  /* Override dark theme backgrounds */
+  [class*="bg-white/"],
+  [class*="bg-[#"] {
+    background: white !important;
+    border-color: #ddd !important;
+  }
+
+  /* Make main content area full width (remove sidebar spacing) */
+  main,
+  [class*="main"],
+  [class*="content"] {
+    margin: 0 !important;
+    padding: 0 !important;
+    width: 100% !important;
+    max-width: 100% !important;
+  }
+
+  /* Ensure segment stats print readably */
+  [class*="text-indigo"],
+  [class*="text-purple"],
+  [class*="text-red"],
+  [class*="text-green"],
+  [class*="text-amber"],
+  [class*="text-orange"],
+  [class*="text-cyan"] {
+    color: #333 !important;
+  }
+
+  /* Signal colors should remain visible */
+  [class*="text-red-400"] {
+    color: #dc2626 !important;
+  }
+
+  [class*="text-green-400"] {
+    color: #16a34a !important;
   }
 }

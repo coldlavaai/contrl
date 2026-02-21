@@ -2,12 +2,15 @@
 
 import dynamic from "next/dynamic";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { calculateSpc, calculateCapability, SpcResult } from "@/lib/spc";
+import { calculateSpc, calculateCapability, SpcResult, NelsonRuleConfig, DEFAULT_NELSON_RULES, NELSON_RULE_NAMES } from "@/lib/spc";
 import { Annotation, TargetLine, saveChart, ChartColors } from "@/lib/chartStorage";
 import HistogramChart from "@/components/HistogramChart";
 import { usePerChartColors, type ColorKey } from "@/hooks/usePerChartColors";
 import { ChartColorPickerModal } from "@/components/ChartColorPickerModal";
 import { ChartValuesDisplay } from "@/components/ChartValuesDisplay";
+import ExportDropdown from "@/components/ExportDropdown";
+import NelsonRulesPanel from "@/components/NelsonRulesPanel";
+import { ExportStats } from "@/lib/exportUtils";
 
 // Dynamically import Plotly to avoid SSR issues
 const Plot = dynamic(() => import("react-plotly.js"), { ssr: false });
@@ -50,6 +53,9 @@ interface SpcChartProps {
   initialUsl?: number;
   onLslChange?: (lsl: number | undefined) => void;
   onUslChange?: (usl: number | undefined) => void;
+  // Nelson rules
+  initialNelsonRules?: NelsonRuleConfig;
+  onNelsonRulesChange?: (rules: NelsonRuleConfig) => void;
 }
 
 interface PopoverState {
@@ -118,6 +124,8 @@ export default function SpcChart({
   initialUsl,
   onLslChange,
   onUslChange,
+  initialNelsonRules,
+  onNelsonRulesChange,
 }: SpcChartProps) {
   // ── Color settings (per-chart with global fallback) ───────────────────────
   const { colors, customColors, updateColor, resetToDefaults, hasCustomizations } = usePerChartColors(initialCustomColors);
@@ -229,6 +237,17 @@ export default function SpcChart({
   const [lslDraft, setLslDraft] = useState(initialLsl != null ? String(initialLsl) : "");
   const [uslDraft, setUslDraft] = useState(initialUsl != null ? String(initialUsl) : "");
 
+  // ── Nelson Rules ───────────────────────────────────────────────────────────
+  const [nelsonRules, setNelsonRules] = useState<NelsonRuleConfig>(initialNelsonRules ?? DEFAULT_NELSON_RULES);
+
+  const handleNelsonRulesChange = (rules: NelsonRuleConfig) => {
+    setNelsonRules(rules);
+    onNelsonRulesChange?.(rules);
+  };
+
+  // ── Chart container ref for export ─────────────────────────────────────────
+  const chartContainerRef = useRef<HTMLDivElement>(null);
+
   // ── Chart tabs: Control Chart vs Distribution ─────────────────────────────
   const [activeTab, setActiveTab] = useState<"control" | "distribution">("control");
 
@@ -261,8 +280,8 @@ export default function SpcChart({
   const omittedSet = useMemo(() => new Set(omittedIndices), [omittedIndices]);
 
   const spc: SpcResult = useMemo(
-    () => calculateSpc(values, dates, splitIndices, { method, splitModes, frozenLimits, omittedIndices }),
-    [values, dates, splitIndices, method, splitModes, frozenLimits, omittedIndices]
+    () => calculateSpc(values, dates, splitIndices, { method, splitModes, frozenLimits, omittedIndices, nelsonRules }),
+    [values, dates, splitIndices, method, splitModes, frozenLimits, omittedIndices, nelsonRules]
   );
 
   const segmentSignals = useMemo(
@@ -270,9 +289,17 @@ export default function SpcChart({
       spc.segments.map((seg) => {
         const pts = spc.points.slice(seg.startIndex, seg.endIndex + 1)
           .filter((p) => !omittedSet.has(p.index));
+        // Collect per-rule counts for this segment
+        const ruleCounts: Record<number, number> = {};
+        pts.forEach((p) => {
+          p.signalDetails?.forEach((d) => {
+            ruleCounts[d.rule] = (ruleCounts[d.rule] || 0) + 1;
+          });
+        });
         return {
           runCount: pts.filter((p) => p.signal === "run").length,
           trendCount: pts.filter((p) => p.signal === "trend").length,
+          ruleCounts,
         };
       }),
     [spc, omittedSet]
@@ -289,6 +316,43 @@ export default function SpcChart({
     const includedValues = values.filter((_, i) => !omittedSet.has(i));
     return calculateCapability(includedValues, spc.mrMean, overallMean, lsl, usl);
   }, [values, spc, omittedSet, lsl, usl]);
+
+  // ── Nelson rule violation counts ────────────────────────────────────────
+  const nelsonViolationCounts = useMemo(() => {
+    const counts: Record<number, number> = {};
+    spc.points.forEach((p) => {
+      if (omittedSet.has(p.index)) return;
+      p.signalDetails?.forEach((d) => {
+        counts[d.rule] = (counts[d.rule] || 0) + 1;
+      });
+    });
+    return counts;
+  }, [spc, omittedSet]);
+
+  // ── Export statistics ─────────────────────────────────────────────────────
+  const exportStats: ExportStats = useMemo(() => {
+    const seg = spc.segments[0];
+    const totalSignals = spc.points.filter((p) => !omittedSet.has(p.index) && p.signal !== "none").length;
+    return {
+      mean: seg?.mean,
+      ucl: seg?.ucl,
+      lcl: seg?.lcl,
+      cpk: capability?.cpk,
+      cp: capability?.cp,
+      pp: capability?.pp,
+      ppk: capability?.ppk,
+      ppm: capability?.ppm,
+      signalCount: totalSignals,
+      dataPoints: values.filter((_, i) => !omittedSet.has(i)).length,
+      lsl,
+      usl,
+      mrMean: spc.mrMean,
+      mrUcl: spc.mrUcl,
+      unit,
+      method,
+      ruleViolations: Object.keys(nelsonViolationCounts).length > 0 ? nelsonViolationCounts : undefined,
+    };
+  }, [spc, capability, omittedSet, values, lsl, usl, unit, method, nelsonViolationCounts]);
 
   // ── Feature 3: Trend line calculations ──────────────────────────────────
   const trendTraces = useMemo(() => {
@@ -534,7 +598,11 @@ export default function SpcChart({
       x: runPoints.map((p) => p.date),
       y: runPoints.map((p) => p.value),
       marker: { ...commonMarker, color: "#ef4444", size: 10 },
-      hovertemplate: `<b>%{x}</b><br>Value: %{y:.1f} ${unit}<br><span style="color:#ef4444">⚠ Run signal</span><extra></extra>`,
+      text: runPoints.map((p) => {
+        const rules = p.signalDetails?.map((d) => `R${d.rule}: ${d.name}`).join("<br>") ?? "Run signal";
+        return `<b>${p.date}</b><br>Value: ${p.value.toFixed(1)} ${unit}<br><span style="color:#ef4444">⚠ ${rules}</span>`;
+      }),
+      hovertemplate: "%{text}<extra></extra>",
     },
     {
       type: "scatter",
@@ -543,7 +611,11 @@ export default function SpcChart({
       x: trendPoints.map((p) => p.date),
       y: trendPoints.map((p) => p.value),
       marker: { ...commonMarker, color: "#f97316", size: 10 },
-      hovertemplate: `<b>%{x}</b><br>Value: %{y:.1f} ${unit}<br><span style="color:#f97316">⚠ Trend signal</span><extra></extra>`,
+      text: trendPoints.map((p) => {
+        const rules = p.signalDetails?.map((d) => `R${d.rule}: ${d.name}`).join("<br>") ?? "Trend signal";
+        return `<b>${p.date}</b><br>Value: ${p.value.toFixed(1)} ${unit}<br><span style="color:#f97316">⚠ ${rules}</span>`;
+      }),
+      hovertemplate: "%{text}<extra></extra>",
     },
   ];
 
@@ -1196,21 +1268,18 @@ export default function SpcChart({
             <span className="text-xs text-red-300/60 italic">Click a data point to omit/restore it</span>
           )}
 
-          {/* Spacer + Print + Save */}
+          {/* Spacer + Nelson Rules + Export + Save */}
           <div className="ml-auto flex items-center gap-2">
-            <button
-              onClick={() => window.print()}
-              title="Print chart"
-              className="flex items-center gap-2 px-3 py-2 rounded-lg text-sm border bg-white/5 border-white/10 text-gray-400 hover:bg-white/8 hover:text-gray-200 hover:border-white/20 transition-all duration-200"
-            >
-              <svg width="13" height="13" viewBox="0 0 24 24" fill="none"
-                stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <polyline points="6 9 6 2 18 2 18 9" />
-                <path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2" />
-                <rect x="6" y="14" width="12" height="8" />
-              </svg>
-              Print
-            </button>
+            <NelsonRulesPanel
+              config={nelsonRules}
+              onChange={handleNelsonRulesChange}
+              violationCounts={nelsonViolationCounts}
+            />
+            <ExportDropdown
+              chartContainerRef={chartContainerRef}
+              title={localTitle}
+              stats={exportStats}
+            />
             <button
               onClick={handleSave}
               title="Save chart to library"
@@ -1469,6 +1538,7 @@ export default function SpcChart({
         <>
           {/* Main Chart */}
           <div
+            ref={chartContainerRef}
             className={`w-full rounded-xl overflow-hidden border transition-all duration-150 ${
               activeMode
                 ? omitMode
@@ -1769,15 +1839,37 @@ export default function SpcChart({
                       <span className="text-[11px] text-green-400/70">✓ No signals detected</span>
                     ) : (
                       <div className="flex flex-wrap gap-2">
-                        {sigInfo.runCount > 0 && (
-                          <span className="text-[11px] text-red-400 bg-red-950/30 border border-red-500/15 px-2 py-0.5 rounded-md">
-                            {sigInfo.runCount} run signal{sigInfo.runCount > 1 ? "s" : ""}
-                          </span>
-                        )}
-                        {sigInfo.trendCount > 0 && (
-                          <span className="text-[11px] text-orange-400 bg-orange-950/30 border border-orange-500/15 px-2 py-0.5 rounded-md">
-                            {sigInfo.trendCount} trend signal{sigInfo.trendCount > 1 ? "s" : ""}
-                          </span>
+                        {Object.keys(sigInfo.ruleCounts).length > 0 ? (
+                          Object.entries(sigInfo.ruleCounts).map(([rule, count]) => {
+                            const ruleNum = Number(rule);
+                            const isRun = [1, 2, 5, 6, 8].includes(ruleNum);
+                            return (
+                              <span
+                                key={rule}
+                                className={`text-[11px] px-2 py-0.5 rounded-md border ${
+                                  isRun
+                                    ? "text-red-400 bg-red-950/30 border-red-500/15"
+                                    : "text-orange-400 bg-orange-950/30 border-orange-500/15"
+                                }`}
+                                title={NELSON_RULE_NAMES[ruleNum]}
+                              >
+                                R{rule}: {count} pt{count !== 1 ? "s" : ""}
+                              </span>
+                            );
+                          })
+                        ) : (
+                          <>
+                            {sigInfo.runCount > 0 && (
+                              <span className="text-[11px] text-red-400 bg-red-950/30 border border-red-500/15 px-2 py-0.5 rounded-md">
+                                {sigInfo.runCount} run signal{sigInfo.runCount > 1 ? "s" : ""}
+                              </span>
+                            )}
+                            {sigInfo.trendCount > 0 && (
+                              <span className="text-[11px] text-orange-400 bg-orange-950/30 border border-orange-500/15 px-2 py-0.5 rounded-md">
+                                {sigInfo.trendCount} trend signal{sigInfo.trendCount > 1 ? "s" : ""}
+                              </span>
+                            )}
+                          </>
                         )}
                       </div>
                     )}

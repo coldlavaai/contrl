@@ -20,6 +20,11 @@ import {
   ChevronLeft,
   ChevronRight,
   MessageSquare,
+  GitBranch,
+  Sigma,
+  Waypoints,
+  Minus,
+  SlidersHorizontal,
 } from "lucide-react";
 
 interface AppSidebarProps {
@@ -43,6 +48,14 @@ const chartTypeItems = [
   { href: "/app/new?type=cchart", label: "c-Chart", icon: Hash, typeParam: "cchart" },
   { href: "/app/new?type=uchart", label: "u-Chart", icon: Layers, typeParam: "uchart" },
   { href: "/app/new?type=pareto", label: "Pareto", icon: BarChart2, typeParam: "pareto" },
+];
+
+const subgroupChartItems = [
+  { href: "/app/new?type=xbar-r", label: "X̄-R Chart", icon: GitBranch, typeParam: "xbar-r" },
+  { href: "/app/new?type=xbar-s", label: "X̄-S Chart", icon: Sigma, typeParam: "xbar-s" },
+  { href: "/app/new?type=ewma", label: "EWMA", icon: Waypoints, typeParam: "ewma" },
+  { href: "/app/new?type=run", label: "Run Chart", icon: Minus, typeParam: "run" },
+  { href: "/app/new?type=moving-avg", label: "Moving Average", icon: SlidersHorizontal, typeParam: "moving-avg" },
 ];
 
 const bottomNavItems = [
@@ -139,6 +152,30 @@ export default function AppSidebar({ collapsed, onToggle }: AppSidebarProps) {
           )}
           <div className="space-y-0.5 px-2">
             {chartTypeItems.map((item) => (
+              <NavItem
+                key={item.href}
+                href={item.href}
+                label={item.label}
+                icon={item.icon}
+                isActive={isChartTypeActive(item.typeParam)}
+                collapsed={collapsed}
+              />
+            ))}
+          </div>
+        </div>
+
+        {/* Subgroup & Advanced Charts section */}
+        <div className="mt-4">
+          {!collapsed && (
+            <div className="text-[10px] text-gray-600 uppercase tracking-wider px-5 pt-2 pb-1.5 font-semibold">
+              Subgroup & Advanced
+            </div>
+          )}
+          {collapsed && (
+            <div className="my-2 mx-4 h-px bg-white/[0.06]" />
+          )}
+          <div className="space-y-0.5 px-2">
+            {subgroupChartItems.map((item) => (
               <NavItem
                 key={item.href}
                 href={item.href}

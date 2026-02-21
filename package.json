@@ -14,6 +14,7 @@
     "@types/react-plotly.js": "^2.6.4",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
+    "jspdf": "^4.2.0",
     "lucide-react": "^0.574.0",
     "next": "16.1.6",
     "plotly.js": "^3.3.1",

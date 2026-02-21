@@ -17,6 +17,9 @@ import ColumnMapper, { MappedDataset } from "@/components/ColumnMapper";
 import { ParsedSheet } from "@/components/FileUpload";
 
 const SpcChart = dynamic(() => import("@/components/SpcChart"), { ssr: false });
+const EwmaChart = dynamic(() => import("@/components/EwmaChart"), { ssr: false });
+const RunChartComponent = dynamic(() => import("@/components/RunChart"), { ssr: false });
+const MovingAverageChart = dynamic(() => import("@/components/MovingAverageChart"), { ssr: false });
 
 function formatDate(ts: number): string {
   return new Date(ts).toLocaleDateString("en-GB", {
@@ -416,26 +419,60 @@ export default function LibraryPage() {
             </div>
           </div>
           <div className="bg-white/[0.02] border border-white/8 rounded-2xl p-6">
-            <SpcChart
-              values={selected.measure.values}
-              dates={selected.measure.dates}
-              title={selected.title}
-              unit={selected.measure.unit}
-              splitIndices={selected.splitIndices}
-              annotations={selected.annotations}
-              initialMethod={selected.method ?? "mean"}
-              initialSplitModes={selected.splitModes ?? {}}
-              initialFrozenLimits={selected.frozenLimits ?? false}
-              initialTargetLines={selected.targetLines ?? []}
-              omittedIndices={selected.omittedIndices ?? []}
-              initialShowTrendLine={selected.showTrendLine ?? false}
-              initialXAxisLabel={selected.xAxisLabel}
-              initialYAxisLabel={selected.yAxisLabel}
-              initialCustomColors={selected.customColors}
-              initialLsl={selected.lsl}
-              initialUsl={selected.usl}
-              readOnly
-            />
+            {(!selected.chartType || selected.chartType === "xmr" || selected.chartType === "cusum") && (
+              <SpcChart
+                values={selected.measure.values}
+                dates={selected.measure.dates}
+                title={selected.title}
+                unit={selected.measure.unit}
+                splitIndices={selected.splitIndices}
+                annotations={selected.annotations}
+                initialMethod={selected.method ?? "mean"}
+                initialSplitModes={selected.splitModes ?? {}}
+                initialFrozenLimits={selected.frozenLimits ?? false}
+                initialTargetLines={selected.targetLines ?? []}
+                omittedIndices={selected.omittedIndices ?? []}
+                initialShowTrendLine={selected.showTrendLine ?? false}
+                initialXAxisLabel={selected.xAxisLabel}
+                initialYAxisLabel={selected.yAxisLabel}
+                initialCustomColors={selected.customColors}
+                initialLsl={selected.lsl}
+                initialUsl={selected.usl}
+                readOnly
+              />
+            )}
+            {selected.chartType === "ewma" && (
+              <EwmaChart
+                values={selected.measure.values}
+                dates={selected.measure.dates}
+                title={selected.title}
+                unit={selected.measure.unit}
+                readOnly
+              />
+            )}
+            {selected.chartType === "run" && (
+              <RunChartComponent
+                values={selected.measure.values}
+                dates={selected.measure.dates}
+                title={selected.title}
+                unit={selected.measure.unit}
+                readOnly
+              />
+            )}
+            {selected.chartType === "moving-avg" && (
+              <MovingAverageChart
+                values={selected.measure.values}
+                dates={selected.measure.dates}
+                title={selected.title}
+                unit={selected.measure.unit}
+                readOnly
+              />
+            )}
+            {(selected.chartType === "xbar-r" || selected.chartType === "xbar-s") && (
+              <div className="text-sm text-gray-400 p-8 text-center">
+                Subgroup chart view — saved for reference. Re-upload data from New Chart to interact.
+              </div>
+            )}
           </div>
           <div className="my-8 border-t border-white/5" />
         </div>

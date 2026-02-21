@@ -3,11 +3,18 @@
 // Mean method:   UCL = X̄ + (R̄ × 2.66), LCL = X̄ − (R̄ × 2.66)
 // Median method: UCL = M̃ + (MR̃ × 3.14), LCL = max(0, M̃ − (MR̃ × 3.14))
 
+export interface SignalDetail {
+  rule: number; // 1-8 (Nelson/Western Electric rule number)
+  name: string; // Human-readable name
+}
+
 export interface SpcPoint {
   index: number;
   value: number;
   date: string;
-  signal: "none" | "run" | "trend"; // run = 8+ above/below mean (red), trend = 6+ consecutive (orange)
+  signal: "none" | "run" | "trend"; // backward compat: run = rule 1/2/etc, trend = rule 3
+  /** Full list of Nelson/Western Electric rule violations at this point */
+  signalDetails?: SignalDetail[];
 }
 
 export interface SpcSegment {
@@ -162,6 +169,302 @@ function detectSignals(
   return signals;
 }
 
+// ── Nelson / Western Electric Rules ──────────────────────────────────────────
+
+export interface NelsonRuleConfig {
+  /** Rule 1: 1 point beyond 3σ */
+  rule1?: boolean;
+  /** Rule 2: N consecutive points same side of mean (default 9) */
+  rule2?: boolean;
+  rule2Count?: number; // default 9
+  /** Rule 3: N consecutive points increasing/decreasing (default 6) */
+  rule3?: boolean;
+  rule3Count?: number; // default 6
+  /** Rule 4: 14 consecutive points alternating up/down */
+  rule4?: boolean;
+  /** Rule 5: 2 out of 3 consecutive beyond 2σ (same side) */
+  rule5?: boolean;
+  /** Rule 6: 4 out of 5 consecutive beyond 1σ (same side) */
+  rule6?: boolean;
+  /** Rule 7: 15 consecutive points within 1σ (either side) — "hugging" */
+  rule7?: boolean;
+  /** Rule 8: 8 consecutive points beyond 1σ (either side) — "stratification" */
+  rule8?: boolean;
+}
+
+export const NELSON_RULE_NAMES: Record<number, string> = {
+  1: "Beyond 3σ",
+  2: "Run of 9",
+  3: "Trend of 6",
+  4: "14 alternating",
+  5: "2 of 3 beyond 2σ",
+  6: "4 of 5 beyond 1σ",
+  7: "15 within 1σ (hugging)",
+  8: "8 beyond 1σ (stratification)",
+};
+
+export const DEFAULT_NELSON_RULES: NelsonRuleConfig = {
+  rule1: true,
+  rule2: true,
+  rule2Count: 9,
+  rule3: true,
+  rule3Count: 6,
+  rule4: false,
+  rule5: false,
+  rule6: false,
+  rule7: false,
+  rule8: false,
+};
+
+/**
+ * Detect all Nelson/Western Electric rule violations across data points.
+ *
+ * @param values - data values
+ * @param segmentMeans - per-point mean
+ * @param segmentUcls - per-point UCL
+ * @param segmentLcls - per-point LCL
+ * @param config - which rules to enable
+ * @returns Array of SignalDetail[] per point
+ */
+export function detectAllSignals(
+  values: number[],
+  segmentMeans: number[],
+  segmentUcls: number[],
+  segmentLcls: number[],
+  config: NelsonRuleConfig = DEFAULT_NELSON_RULES,
+): SignalDetail[][] {
+  const n = values.length;
+  const signals: SignalDetail[][] = new Array(n).fill(null).map(() => []);
+
+  if (n === 0) return signals;
+
+  // Compute zone boundaries per point
+  const sigma1Upper: number[] = []; // mean + 1σ
+  const sigma1Lower: number[] = []; // mean - 1σ
+  const sigma2Upper: number[] = []; // mean + 2σ
+  const sigma2Lower: number[] = []; // mean - 2σ
+
+  for (let i = 0; i < n; i++) {
+    const m = segmentMeans[i];
+    const oneThird = (segmentUcls[i] - m) / 3;
+    sigma1Upper.push(m + oneThird);
+    sigma1Lower.push(m - oneThird);
+    sigma2Upper.push(m + 2 * oneThird);
+    sigma2Lower.push(m - 2 * oneThird);
+  }
+
+  // ── Rule 1: One point beyond 3σ ──
+  if (config.rule1) {
+    for (let i = 0; i < n; i++) {
+      if (values[i] > segmentUcls[i] || values[i] < segmentLcls[i]) {
+        signals[i].push({ rule: 1, name: NELSON_RULE_NAMES[1] });
+      }
+    }
+  }
+
+  // ── Rule 2: N consecutive points on same side of mean ──
+  if (config.rule2) {
+    const runLen = config.rule2Count ?? 9;
+    let runStart = 0;
+    let runDir: "above" | "below" | null = null;
+    let runCount = 0;
+
+    for (let i = 0; i < n; i++) {
+      const above = values[i] > segmentMeans[i];
+      const below = values[i] < segmentMeans[i];
+      const dir = above ? "above" : below ? "below" : null;
+
+      if (dir === runDir && dir !== null) {
+        runCount++;
+      } else {
+        runStart = i;
+        runDir = dir;
+        runCount = 1;
+      }
+
+      if (runCount >= runLen) {
+        for (let j = runStart; j <= i; j++) {
+          if (!signals[j].some((s) => s.rule === 2)) {
+            signals[j].push({ rule: 2, name: NELSON_RULE_NAMES[2] });
+          }
+        }
+      }
+    }
+  }
+
+  // ── Rule 3: N consecutive points increasing or decreasing ──
+  if (config.rule3) {
+    const trendLen = config.rule3Count ?? 6;
+    let trendStart = 0;
+    let trendDir: "up" | "down" | null = null;
+    let trendCount = 1;
+
+    for (let i = 1; i < n; i++) {
+      const dir = values[i] > values[i - 1] ? "up" : values[i] < values[i - 1] ? "down" : null;
+
+      if (dir !== null && dir === trendDir) {
+        trendCount++;
+      } else {
+        trendStart = i - 1;
+        trendDir = dir;
+        trendCount = 2;
+      }
+
+      if (trendCount >= trendLen) {
+        for (let j = trendStart; j <= i; j++) {
+          if (!signals[j].some((s) => s.rule === 3)) {
+            signals[j].push({ rule: 3, name: NELSON_RULE_NAMES[3] });
+          }
+        }
+      }
+    }
+  }
+
+  // ── Rule 4: 14 consecutive points alternating up/down ──
+  if (config.rule4) {
+    // Track alternation direction: each point is "up" or "down" from previous
+    const dirs: ("up" | "down" | "same")[] = ["same"]; // first point has no direction
+    for (let i = 1; i < n; i++) {
+      dirs.push(values[i] > values[i - 1] ? "up" : values[i] < values[i - 1] ? "down" : "same");
+    }
+
+    let altCount = 1;
+    let altStart = 0;
+
+    for (let i = 2; i < n; i++) {
+      if (
+        dirs[i] !== "same" &&
+        dirs[i - 1] !== "same" &&
+        dirs[i] !== dirs[i - 1]
+      ) {
+        altCount++;
+      } else {
+        altStart = i - 1;
+        altCount = 2;
+      }
+
+      if (altCount >= 14) {
+        const start = i - altCount + 1;
+        for (let j = Math.max(altStart, start); j <= i; j++) {
+          if (!signals[j].some((s) => s.rule === 4)) {
+            signals[j].push({ rule: 4, name: NELSON_RULE_NAMES[4] });
+          }
+        }
+      }
+    }
+  }
+
+  // ── Rule 5: 2 out of 3 consecutive points beyond 2σ (same side) ──
+  if (config.rule5) {
+    for (let i = 2; i < n; i++) {
+      // Check upper side
+      let upperCount = 0;
+      for (let j = i - 2; j <= i; j++) {
+        if (values[j] > sigma2Upper[j]) upperCount++;
+      }
+      if (upperCount >= 2) {
+        for (let j = i - 2; j <= i; j++) {
+          if (values[j] > sigma2Upper[j] && !signals[j].some((s) => s.rule === 5)) {
+            signals[j].push({ rule: 5, name: NELSON_RULE_NAMES[5] });
+          }
+        }
+      }
+
+      // Check lower side
+      let lowerCount = 0;
+      for (let j = i - 2; j <= i; j++) {
+        if (values[j] < sigma2Lower[j]) lowerCount++;
+      }
+      if (lowerCount >= 2) {
+        for (let j = i - 2; j <= i; j++) {
+          if (values[j] < sigma2Lower[j] && !signals[j].some((s) => s.rule === 5)) {
+            signals[j].push({ rule: 5, name: NELSON_RULE_NAMES[5] });
+          }
+        }
+      }
+    }
+  }
+
+  // ── Rule 6: 4 out of 5 consecutive points beyond 1σ (same side) ──
+  if (config.rule6) {
+    for (let i = 4; i < n; i++) {
+      // Check upper side
+      let upperCount = 0;
+      for (let j = i - 4; j <= i; j++) {
+        if (values[j] > sigma1Upper[j]) upperCount++;
+      }
+      if (upperCount >= 4) {
+        for (let j = i - 4; j <= i; j++) {
+          if (values[j] > sigma1Upper[j] && !signals[j].some((s) => s.rule === 6)) {
+            signals[j].push({ rule: 6, name: NELSON_RULE_NAMES[6] });
+          }
+        }
+      }
+
+      // Check lower side
+      let lowerCount = 0;
+      for (let j = i - 4; j <= i; j++) {
+        if (values[j] < sigma1Lower[j]) lowerCount++;
+      }
+      if (lowerCount >= 4) {
+        for (let j = i - 4; j <= i; j++) {
+          if (values[j] < sigma1Lower[j] && !signals[j].some((s) => s.rule === 6)) {
+            signals[j].push({ rule: 6, name: NELSON_RULE_NAMES[6] });
+          }
+        }
+      }
+    }
+  }
+
+  // ── Rule 7: 15 consecutive points within 1σ (either side) — "hugging" ──
+  if (config.rule7) {
+    let hugCount = 0;
+    let hugStart = 0;
+
+    for (let i = 0; i < n; i++) {
+      if (values[i] >= sigma1Lower[i] && values[i] <= sigma1Upper[i]) {
+        if (hugCount === 0) hugStart = i;
+        hugCount++;
+      } else {
+        hugCount = 0;
+      }
+
+      if (hugCount >= 15) {
+        for (let j = hugStart; j <= i; j++) {
+          if (!signals[j].some((s) => s.rule === 7)) {
+            signals[j].push({ rule: 7, name: NELSON_RULE_NAMES[7] });
+          }
+        }
+      }
+    }
+  }
+
+  // ── Rule 8: 8 consecutive points beyond 1σ (either side) — "stratification" ──
+  if (config.rule8) {
+    let stratCount = 0;
+    let stratStart = 0;
+
+    for (let i = 0; i < n; i++) {
+      if (values[i] > sigma1Upper[i] || values[i] < sigma1Lower[i]) {
+        if (stratCount === 0) stratStart = i;
+        stratCount++;
+      } else {
+        stratCount = 0;
+      }
+
+      if (stratCount >= 8) {
+        for (let j = stratStart; j <= i; j++) {
+          if (!signals[j].some((s) => s.rule === 8)) {
+            signals[j].push({ rule: 8, name: NELSON_RULE_NAMES[8] });
+          }
+        }
+      }
+    }
+  }
+
+  return signals;
+}
+
 export interface SpcOptions {
   /** Calculation method: mean (default) or median */
   method?: "mean" | "median";
@@ -171,6 +474,8 @@ export interface SpcOptions {
   frozenLimits?: boolean;
   /** Indices to omit from UCL/LCL/mean calculations (shown hollow on chart) */
   omittedIndices?: number[];
+  /** Nelson/Western Electric rule configuration */
+  nelsonRules?: NelsonRuleConfig;
 }
 
 /**
@@ -291,7 +596,7 @@ export function calculateSpc(
   splitIndices: number[] = [],
   options: SpcOptions = {}
 ): SpcResult {
-  const { method = "mean", splitModes = {}, frozenLimits = false, omittedIndices = [] } = options;
+  const { method = "mean", splitModes = {}, frozenLimits = false, omittedIndices = [], nelsonRules } = options;
 
   if (values.length === 0) {
     return {
@@ -459,9 +764,15 @@ export function calculateSpc(
   const uclLine: (number | null)[] = new Array(values.length).fill(null);
   const lclLine: (number | null)[] = new Array(values.length).fill(null);
 
+  // Per-point UCL/LCL arrays for Nelson rules
+  const segmentUcls = new Array(values.length).fill(0);
+  const segmentLcls = new Array(values.length).fill(0);
+
   for (const seg of segments) {
     for (let i = seg.startIndex; i <= seg.endIndex; i++) {
       meanLine[i] = seg.mean;
+      segmentUcls[i] = seg.ucl;
+      segmentLcls[i] = seg.lcl;
       if (!seg.runSplitMode) {
         uclLine[i] = seg.ucl;
         lclLine[i] = seg.lcl;
@@ -478,12 +789,36 @@ export function calculateSpc(
     }
   }
 
-  const points: SpcPoint[] = values.map((v, i) => ({
-    index: i,
-    value: v,
-    date: dates[i] ?? `Week ${i + 1}`,
-    signal: signals[i],
-  }));
+  // ── Nelson rules detection ────────────────────────────────────────────────
+  const allSignalDetails = detectAllSignals(
+    values,
+    segmentMeans,
+    segmentUcls,
+    segmentLcls,
+    nelsonRules ?? DEFAULT_NELSON_RULES,
+  );
+
+  const points: SpcPoint[] = values.map((v, i) => {
+    const details = allSignalDetails[i];
+    // Backward compat: map Nelson rules to legacy signal types
+    let legacySignal: "none" | "run" | "trend" = signals[i];
+    if (details.length > 0 && legacySignal === "none") {
+      if (details.some((d) => d.rule === 1 || d.rule === 2 || d.rule === 5 || d.rule === 6 || d.rule === 8)) {
+        legacySignal = "run";
+      } else if (details.some((d) => d.rule === 3 || d.rule === 4)) {
+        legacySignal = "trend";
+      } else if (details.some((d) => d.rule === 7)) {
+        legacySignal = "trend"; // hugging mapped to trend color
+      }
+    }
+    return {
+      index: i,
+      value: v,
+      date: dates[i] ?? `Week ${i + 1}`,
+      signal: legacySignal,
+      signalDetails: details.length > 0 ? details : undefined,
+    };
+  });
 
   return { points, segments, meanLine, uclLine, lclLine, movingRanges, mrMean, mrUcl };
 }

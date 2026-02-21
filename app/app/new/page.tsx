@@ -15,10 +15,14 @@ const ScatterPlot = dynamic(() => import("@/components/ScatterPlot"), { ssr: fal
 const CusumChart = dynamic(() => import("@/components/CusumChart"), { ssr: false });
 const ParetoChart = dynamic(() => import("@/components/ParetoChart"), { ssr: false });
 const AttributeChartDyn = dynamic(() => import("@/components/AttributeChartWrapper"), { ssr: false });
+const SubgroupChart = dynamic(() => import("@/components/SubgroupChart"), { ssr: false });
+const EwmaChart = dynamic(() => import("@/components/EwmaChart"), { ssr: false });
+const RunChartComponent = dynamic(() => import("@/components/RunChart"), { ssr: false });
+const MovingAverageChart = dynamic(() => import("@/components/MovingAverageChart"), { ssr: false });
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
-type ChartType = "xmr" | "cusum" | "pchart" | "npchart" | "cchart" | "uchart" | "pareto";
+type ChartType = "xmr" | "cusum" | "pchart" | "npchart" | "cchart" | "uchart" | "pareto" | "xbar-r" | "xbar-s" | "ewma" | "run" | "moving-avg";
 type AppState = "type-select" | "upload" | "sheet-select" | "mapping" | "charts";
 
 interface AttributeConfig {
@@ -92,6 +96,46 @@ const CHART_TYPES: Array<{
     desc: "Vital few causes",
     detail: "Bar chart sorted by frequency with cumulative % line. Identifies the vital few causes.",
     cols: "double",
+  },
+  {
+    type: "xbar-r",
+    label: "X̄-R Chart",
+    icon: "📐",
+    desc: "Subgroup means & ranges",
+    detail: "Subgroup means and ranges. For when you measure multiple samples per time period.",
+    cols: "single",
+  },
+  {
+    type: "xbar-s",
+    label: "X̄-S Chart",
+    icon: "📏",
+    desc: "Subgroup means & std dev",
+    detail: "Subgroup means and standard deviations. Better for larger subgroups (n>10).",
+    cols: "single",
+  },
+  {
+    type: "ewma",
+    label: "EWMA",
+    icon: "🎯",
+    desc: "Detect small shifts",
+    detail: "Exponentially weighted moving average. Detects small, sustained shifts in the process mean.",
+    cols: "single",
+  },
+  {
+    type: "run",
+    label: "Run Chart",
+    icon: "〰️",
+    desc: "Pattern detection",
+    detail: "Simple time series with median. No control limits — just pattern detection.",
+    cols: "single",
+  },
+  {
+    type: "moving-avg",
+    label: "Moving Average",
+    icon: "📉",
+    desc: "Smoothed trend",
+    detail: "Smoothed trend with moving window. Reduces noise in volatile data.",
+    cols: "single",
   },
 ];
 
@@ -304,6 +348,201 @@ function extractColStrings(sheet: ParsedSheet, colStr: string, dateCol: string):
     .map((row) => String(row[colIdx] ?? ""));
 }
 
+// ─── Subgroup Column Mapper ───────────────────────────────────────────────────
+
+interface SubgroupColMapProps {
+  sheet: ParsedSheet;
+  onConfirm: (data: { subgroups: number[][]; labels: string[] }) => void;
+}
+
+function SubgroupColMap({ sheet, onConfirm }: SubgroupColMapProps) {
+  const [mode, setMode] = useState<"columns" | "grouping">("columns");
+  const [labelCol, setLabelCol] = useState("");
+  const [measureCols, setMeasureCols] = useState<string[]>([]);
+  const [groupCol, setGroupCol] = useState("");
+  const [valueCol, setValueCol] = useState("");
+
+  const opts = buildColumnOptions(sheet.rawRows);
+
+  const toggleMeasureCol = (colStr: string) => {
+    setMeasureCols((prev) =>
+      prev.includes(colStr) ? prev.filter((c) => c !== colStr) : [...prev, colStr]
+    );
+  };
+
+  const isValid = mode === "columns"
+    ? labelCol !== "" && measureCols.length >= 2
+    : labelCol !== "" && groupCol !== "" && valueCol !== "";
+
+  const handleConfirm = () => {
+    if (mode === "columns") {
+      // Each row is a subgroup, measurement columns are the values
+      const labelIdx = parseInt(labelCol, 10);
+      const colIndices = measureCols.map((c) => parseInt(c, 10));
+      const subgroups: number[][] = [];
+      const labels: string[] = [];
+
+      for (const row of sheet.rawRows) {
+        const lbl = row[labelIdx];
+        if (lbl === null || lbl === undefined || lbl === "") continue;
+        const vals = colIndices.map((ci) => {
+          const v = row[ci];
+          return typeof v === "number" ? v : parseFloat(String(v ?? "0")) || 0;
+        });
+        // Skip if all zeros/NaN
+        if (vals.some((v) => !isNaN(v))) {
+          subgroups.push(vals);
+          labels.push(String(lbl));
+        }
+      }
+      onConfirm({ subgroups, labels });
+    } else {
+      // Grouping mode: group by one column, measurements from another
+      const labelIdx = parseInt(labelCol, 10);
+      const groupIdx = parseInt(groupCol, 10);
+      const valIdx = parseInt(valueCol, 10);
+
+      const groupMap = new Map<string, number[]>();
+      const groupOrder: string[] = [];
+
+      for (const row of sheet.rawRows) {
+        const lbl = row[labelIdx];
+        if (lbl === null || lbl === undefined || lbl === "") continue;
+        const group = String(row[groupIdx] ?? "");
+        const val = typeof row[valIdx] === "number" ? row[valIdx] : parseFloat(String(row[valIdx] ?? "0"));
+        if (isNaN(val as number)) continue;
+
+        if (!groupMap.has(group)) {
+          groupMap.set(group, []);
+          groupOrder.push(group);
+        }
+        groupMap.get(group)!.push(val as number);
+      }
+
+      const subgroups = groupOrder.map((g) => groupMap.get(g)!);
+      onConfirm({ subgroups, labels: groupOrder });
+    }
+  };
+
+  return (
+    <div className="space-y-5 p-6 bg-white/3 border border-white/8 rounded-xl">
+      <h3 className="text-white font-semibold">Map your subgroup data</h3>
+
+      {/* Mode toggle */}
+      <div className="flex items-center rounded-lg border border-white/10 bg-white/5 overflow-hidden w-fit">
+        <button
+          onClick={() => setMode("columns")}
+          className={`px-4 py-2 text-sm font-semibold transition-all ${
+            mode === "columns" ? "bg-indigo-600 text-white" : "text-gray-400 hover:text-gray-200"
+          }`}
+        >
+          Multiple Columns
+        </button>
+        <button
+          onClick={() => setMode("grouping")}
+          className={`px-4 py-2 text-sm font-semibold transition-all ${
+            mode === "grouping" ? "bg-indigo-600 text-white" : "text-gray-400 hover:text-gray-200"
+          }`}
+        >
+          Grouping Column
+        </button>
+      </div>
+
+      <p className="text-xs text-gray-500">
+        {mode === "columns"
+          ? "Each row is a subgroup. Select the columns that contain your measurements."
+          : "Data is stacked — one row per measurement. Group by a column to form subgroups."}
+      </p>
+
+      {/* Label column */}
+      <div>
+        <label className="block text-xs text-gray-400 mb-1">
+          {mode === "columns" ? "Subgroup label column" : "Label / Date column"}
+        </label>
+        <select
+          value={labelCol}
+          onChange={(e) => setLabelCol(e.target.value)}
+          className="w-full bg-[#141414] border border-white/10 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-indigo-500"
+        >
+          <option value="">— Select column —</option>
+          {opts.map((o) => (
+            <option key={o.index} value={String(o.index)}>{o.display}</option>
+          ))}
+        </select>
+      </div>
+
+      {mode === "columns" ? (
+        <div>
+          <label className="block text-xs text-gray-400 mb-2">
+            Measurement columns (select 2+)
+          </label>
+          <div className="grid grid-cols-2 gap-2 max-h-48 overflow-y-auto">
+            {opts.map((o) => {
+              const colStr = String(o.index);
+              const isSelected = measureCols.includes(colStr);
+              return (
+                <button
+                  key={o.index}
+                  onClick={() => toggleMeasureCol(colStr)}
+                  className={`text-left px-3 py-2 rounded-lg text-sm border transition-all ${
+                    isSelected
+                      ? "bg-indigo-600/20 border-indigo-500/50 text-indigo-300"
+                      : "bg-white/3 border-white/8 text-gray-400 hover:border-white/20"
+                  }`}
+                >
+                  {isSelected && "✓ "}{o.display}
+                </button>
+              );
+            })}
+          </div>
+          {measureCols.length > 0 && (
+            <p className="text-xs text-indigo-400 mt-2">
+              {measureCols.length} columns selected → subgroup size n = {measureCols.length}
+            </p>
+          )}
+        </div>
+      ) : (
+        <>
+          <div>
+            <label className="block text-xs text-gray-400 mb-1">Grouping column</label>
+            <select
+              value={groupCol}
+              onChange={(e) => setGroupCol(e.target.value)}
+              className="w-full bg-[#141414] border border-white/10 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-indigo-500"
+            >
+              <option value="">— Select column —</option>
+              {opts.map((o) => (
+                <option key={o.index} value={String(o.index)}>{o.display}</option>
+              ))}
+            </select>
+          </div>
+          <div>
+            <label className="block text-xs text-gray-400 mb-1">Measurement value column</label>
+            <select
+              value={valueCol}
+              onChange={(e) => setValueCol(e.target.value)}
+              className="w-full bg-[#141414] border border-white/10 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-indigo-500"
+            >
+              <option value="">— Select column —</option>
+              {opts.map((o) => (
+                <option key={o.index} value={String(o.index)}>{o.display}</option>
+              ))}
+            </select>
+          </div>
+        </>
+      )}
+
+      <button
+        disabled={!isValid}
+        onClick={handleConfirm}
+        className="w-full py-2.5 px-4 rounded-xl bg-indigo-600 hover:bg-indigo-500 disabled:opacity-40 disabled:cursor-not-allowed text-white text-sm font-medium transition-colors"
+      >
+        Build Chart
+      </button>
+    </div>
+  );
+}
+
 // ─── Main page component ──────────────────────────────────────────────────────
 
 function NewChartPageInner() {
@@ -404,6 +643,7 @@ function NewChartPageInner() {
     setWorkbookData(null);
     setDataset(null);
     setAttrData(null);
+    setSubgroupData(null);
     setSplitIndicesMap({});
     setAnnotationsMap({});
     setTitlesMap({});
@@ -426,7 +666,12 @@ function NewChartPageInner() {
   };
 
   const isAttributeType = chartType && ["pchart", "npchart", "cchart", "uchart", "pareto"].includes(chartType);
+  const isSubgroupType = chartType && ["xbar-r", "xbar-s"].includes(chartType);
+  const isSimpleAdvancedType = chartType && ["ewma", "run", "moving-avg"].includes(chartType);
   const ctDef = CHART_TYPES.find((c) => c.type === chartType);
+
+  // Subgroup data state
+  const [subgroupData, setSubgroupData] = useState<{ subgroups: number[][]; labels: string[] } | null>(null);
 
   return (
     <div className="px-4 sm:px-6 py-8 max-w-5xl mx-auto">
@@ -504,7 +749,7 @@ function NewChartPageInner() {
             </p>
           </div>
           <FileUpload onWorkbookParsed={handleWorkbookParsed} />
-          {(chartType === "xmr" || chartType === "cusum") && (
+          {(chartType === "xmr" || chartType === "cusum" || chartType === "ewma" || chartType === "run" || chartType === "moving-avg") && (
             <>
               <div className="flex items-center gap-4">
                 <div className="flex-1 border-t border-white/8" />
@@ -563,7 +808,15 @@ function NewChartPageInner() {
             <h2 className="text-lg font-semibold text-white mb-1">Map your columns</h2>
             <p className="text-gray-500 text-sm">{parsedSheet.rawRows.length} rows detected</p>
           </div>
-          {isAttributeType ? (
+          {isSubgroupType ? (
+            <SubgroupColMap
+              sheet={parsedSheet}
+              onConfirm={(data) => {
+                setSubgroupData(data);
+                setState("charts");
+              }}
+            />
+          ) : isAttributeType ? (
             <AttributeColMap
               sheet={parsedSheet}
               chartType={chartType!}
@@ -630,6 +883,87 @@ function NewChartPageInner() {
               col2Values={attrData.col2Values}
               fixedN={attrData.fixedN}
             />
+          )}
+
+          {/* Subgroup charts (X̄-R, X̄-S) */}
+          {isSubgroupType && subgroupData && (
+            <div className="space-y-6">
+              <div className="mb-2">
+                <h2 className="text-xl font-semibold text-white">Subgroup Analysis</h2>
+                <p className="text-sm text-gray-500 mt-1">
+                  {subgroupData.subgroups.length} subgroups · n = {subgroupData.subgroups[0]?.length ?? 0}
+                </p>
+              </div>
+              <SubgroupChart
+                subgroups={subgroupData.subgroups}
+                labels={subgroupData.labels}
+                title={`${chartType === "xbar-r" ? "X̄-R" : "X̄-S"} Chart`}
+                chartType={chartType as "xbar-r" | "xbar-s"}
+              />
+            </div>
+          )}
+
+          {/* EWMA chart */}
+          {chartType === "ewma" && dataset && (
+            <div className="space-y-6">
+              <div className="mb-2">
+                <h2 className="text-xl font-semibold text-white">{dataset.name}</h2>
+                <p className="text-sm text-gray-500 mt-1">
+                  {dataset.dates[0]} — {dataset.dates[dataset.dates.length - 1]} · {dataset.dates.length} points
+                </p>
+              </div>
+              {dataset.measures.map((m) => (
+                <EwmaChart
+                  key={m.name}
+                  values={m.data}
+                  dates={dataset.dates}
+                  title={m.name}
+                  unit={m.unit}
+                />
+              ))}
+            </div>
+          )}
+
+          {/* Run chart */}
+          {chartType === "run" && dataset && (
+            <div className="space-y-6">
+              <div className="mb-2">
+                <h2 className="text-xl font-semibold text-white">{dataset.name}</h2>
+                <p className="text-sm text-gray-500 mt-1">
+                  {dataset.dates[0]} — {dataset.dates[dataset.dates.length - 1]} · {dataset.dates.length} points
+                </p>
+              </div>
+              {dataset.measures.map((m) => (
+                <RunChartComponent
+                  key={m.name}
+                  values={m.data}
+                  dates={dataset.dates}
+                  title={m.name}
+                  unit={m.unit}
+                />
+              ))}
+            </div>
+          )}
+
+          {/* Moving Average chart */}
+          {chartType === "moving-avg" && dataset && (
+            <div className="space-y-6">
+              <div className="mb-2">
+                <h2 className="text-xl font-semibold text-white">{dataset.name}</h2>
+                <p className="text-sm text-gray-500 mt-1">
+                  {dataset.dates[0]} — {dataset.dates[dataset.dates.length - 1]} · {dataset.dates.length} points
+                </p>
+              </div>
+              {dataset.measures.map((m) => (
+                <MovingAverageChart
+                  key={m.name}
+                  values={m.data}
+                  dates={dataset.dates}
+                  title={m.name}
+                  unit={m.unit}
+                />
+              ))}
+            </div>
           )}
         </div>
       )}

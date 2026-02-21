@@ -51,6 +51,11 @@ export interface SavedChart {
   // Specification limits
   lsl?: number;
   usl?: number;
+  // Subgroup data for X̄-R and X̄-S charts
+  subgroupData?: {
+    subgroups: number[][];
+    labels: string[];
+  };
 }
 
 const STORAGE_KEY = "contrl_charts";
