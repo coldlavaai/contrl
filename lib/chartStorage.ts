@@ -48,6 +48,9 @@ export interface SavedChart {
   yAxisLabel?: string;
   // Per-chart custom colors (overrides global defaults)
   customColors?: ChartColors;
+  // Specification limits
+  lsl?: number;
+  usl?: number;
 }
 
 const STORAGE_KEY = "contrl_charts";
@@ -129,6 +132,8 @@ function chartToRow(chart: SavedChart, userId: string) {
     x_axis_label: chart.xAxisLabel ?? null,
     y_axis_label: chart.yAxisLabel ?? null,
     custom_colors: chart.customColors ?? null,
+    lsl: chart.lsl ?? null,
+    usl: chart.usl ?? null,
   };
 }
 
@@ -150,6 +155,8 @@ function rowToChart(row: Record<string, unknown>): SavedChart {
     xAxisLabel: (row.x_axis_label as string) ?? undefined,
     yAxisLabel: (row.y_axis_label as string) ?? undefined,
     customColors: (row.custom_colors as ChartColors) ?? undefined,
+    lsl: (row.lsl as number) ?? undefined,
+    usl: (row.usl as number) ?? undefined,
   };
 }
 
@@ -249,6 +256,8 @@ export async function updateChartCloud(
     if (partial.xAxisLabel !== undefined) updateData.x_axis_label = partial.xAxisLabel;
     if (partial.yAxisLabel !== undefined) updateData.y_axis_label = partial.yAxisLabel;
     if (partial.customColors !== undefined) updateData.custom_colors = partial.customColors;
+    if (partial.lsl !== undefined) updateData.lsl = partial.lsl;
+    if (partial.usl !== undefined) updateData.usl = partial.usl;
     updateData.updated_at = new Date().toISOString();
 
     const { error } = await supabase

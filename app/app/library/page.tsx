@@ -432,6 +432,8 @@ export default function LibraryPage() {
               initialXAxisLabel={selected.xAxisLabel}
               initialYAxisLabel={selected.yAxisLabel}
               initialCustomColors={selected.customColors}
+              initialLsl={selected.lsl}
+              initialUsl={selected.usl}
               readOnly
             />
           </div>

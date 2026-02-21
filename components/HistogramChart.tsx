@@ -10,6 +10,8 @@ interface HistogramChartProps {
   values: number[];
   title: string;
   unit: string;
+  lsl?: number | null;
+  usl?: number | null;
 }
 
 function calcStats(values: number[]) {
@@ -45,7 +47,7 @@ function normalPdf(x: number, mean: number, std: number): number {
   );
 }
 
-export default function HistogramChart({ values, title, unit }: HistogramChartProps) {
+export default function HistogramChart({ values, title, unit, lsl, usl }: HistogramChartProps) {
   const colors = useChartColors();
   const { mean, std, skewness, kurtosis } = useMemo(() => calcStats(values), [values]);
 
@@ -87,6 +89,34 @@ export default function HistogramChart({ values, title, unit }: HistogramChartPr
     ? "Data appears approximately normal"
     : "Data is skewed/non-normal — interpret control limits with care";
 
+  // ── Spec limit vertical lines ─────────────────────────────────────────────
+  const maxCount = binCounts.length > 0 ? Math.max(...binCounts, ...curveY) : 1;
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const specTraces: any[] = [];
+  if (lsl != null) {
+    specTraces.push({
+      type: "scatter",
+      mode: "lines",
+      name: "LSL",
+      x: [lsl, lsl],
+      y: [0, maxCount * 1.15],
+      line: { color: "#ef4444", width: 2, dash: "dash" },
+      hovertemplate: `LSL: ${lsl}<extra></extra>`,
+    });
+  }
+  if (usl != null) {
+    specTraces.push({
+      type: "scatter",
+      mode: "lines",
+      name: "USL",
+      x: [usl, usl],
+      y: [0, maxCount * 1.15],
+      line: { color: "#ef4444", width: 2, dash: "dash" },
+      hovertemplate: `USL: ${usl}<extra></extra>`,
+    });
+  }
+
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const data: any[] = [
     {
@@ -110,6 +140,7 @@ export default function HistogramChart({ values, title, unit }: HistogramChartPr
       line: { color: "rgba(251, 191, 36, 0.85)", width: 2 },
       hoverinfo: "skip",
     },
+    ...specTraces,
   ];
 
   const layout: Partial<Plotly.Layout> = {

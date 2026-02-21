@@ -384,6 +384,8 @@ export default function AnalyticsPage() {
                       initialXAxisLabel={chart.xAxisLabel}
                       initialYAxisLabel={chart.yAxisLabel}
                       initialCustomColors={chart.customColors}
+                      initialLsl={chart.lsl}
+                      initialUsl={chart.usl}
                       readOnly
                     />
                   </div>

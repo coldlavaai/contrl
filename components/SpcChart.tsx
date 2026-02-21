@@ -2,7 +2,7 @@
 
 import dynamic from "next/dynamic";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { calculateSpc, SpcResult } from "@/lib/spc";
+import { calculateSpc, calculateCapability, SpcResult } from "@/lib/spc";
 import { Annotation, TargetLine, saveChart, ChartColors } from "@/lib/chartStorage";
 import HistogramChart from "@/components/HistogramChart";
 import { usePerChartColors, type ColorKey } from "@/hooks/usePerChartColors";
@@ -45,6 +45,11 @@ interface SpcChartProps {
   // Per-chart custom colors
   initialCustomColors?: ChartColors;
   onCustomColorsChange?: (colors: ChartColors) => void;
+  // Specification limits
+  initialLsl?: number;
+  initialUsl?: number;
+  onLslChange?: (lsl: number | undefined) => void;
+  onUslChange?: (usl: number | undefined) => void;
 }
 
 interface PopoverState {
@@ -109,6 +114,10 @@ export default function SpcChart({
   onYAxisLabelChange,
   initialCustomColors,
   onCustomColorsChange,
+  initialLsl,
+  initialUsl,
+  onLslChange,
+  onUslChange,
 }: SpcChartProps) {
   // ── Color settings (per-chart with global fallback) ───────────────────────
   const { colors, customColors, updateColor, resetToDefaults, hasCustomizations } = usePerChartColors(initialCustomColors);
@@ -213,6 +222,13 @@ export default function SpcChart({
   // ── Feature 3: Trend Line ────────────────────────────────────────────────
   const [showTrendLine, setShowTrendLine] = useState(initialShowTrendLine);
 
+  // ── Feature: Spec Limits (LSL / USL) ──────────────────────────────────────
+  const [lsl, setLsl] = useState<number | undefined>(initialLsl);
+  const [usl, setUsl] = useState<number | undefined>(initialUsl);
+  const [showSpecInput, setShowSpecInput] = useState(false);
+  const [lslDraft, setLslDraft] = useState(initialLsl != null ? String(initialLsl) : "");
+  const [uslDraft, setUslDraft] = useState(initialUsl != null ? String(initialUsl) : "");
+
   // ── Chart tabs: Control Chart vs Distribution ─────────────────────────────
   const [activeTab, setActiveTab] = useState<"control" | "distribution">("control");
 
@@ -234,6 +250,8 @@ export default function SpcChart({
       xAxisLabel,
       yAxisLabel,
       customColors: hasCustomizations ? customColors : undefined,
+      lsl,
+      usl,
     });
     setSavedFlash(true);
     setTimeout(() => setSavedFlash(false), 2000);
@@ -259,6 +277,18 @@ export default function SpcChart({
       }),
     [spc, omittedSet]
   );
+
+  // ── Capability indices ─────────────────────────────────────────────────────
+  const capability = useMemo(() => {
+    if (lsl == null && usl == null) return null;
+    // Use overall mean and R̄ (first segment for single-segment, or global)
+    const overallMean = spc.segments.length > 0
+      ? spc.points.filter((p) => !omittedSet.has(p.index)).reduce((a, p) => a + p.value, 0) /
+        spc.points.filter((p) => !omittedSet.has(p.index)).length
+      : 0;
+    const includedValues = values.filter((_, i) => !omittedSet.has(i));
+    return calculateCapability(includedValues, spc.mrMean, overallMean, lsl, usl);
+  }, [values, spc, omittedSet, lsl, usl]);
 
   // ── Feature 3: Trend line calculations ──────────────────────────────────
   const trendTraces = useMemo(() => {
@@ -326,6 +356,42 @@ export default function SpcChart({
     y1: t.value,
     line: { color: TARGET_COLORS[t.color], width: 1.5, dash: "dashdot" as const },
   }));
+
+  // ── Spec limit shapes (LSL / USL) ──────────────────────────────────────
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const specShapes: any[] = [];
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const specAnnotations: any[] = [];
+  if (lsl != null) {
+    specShapes.push({
+      type: "line" as const,
+      x0: 0, x1: 1, xref: "paper" as const,
+      y0: lsl, y1: lsl,
+      line: { color: "#ef4444", width: 2, dash: "dash" as const },
+    });
+    specAnnotations.push({
+      x: 0, xref: "paper", y: lsl,
+      text: `LSL ${lsl}`,
+      showarrow: false, xanchor: "left", yanchor: "bottom",
+      font: { color: "#ef4444", size: 10 },
+      bgcolor: "rgba(20,20,20,0.8)", bordercolor: "#ef4444", borderwidth: 1,
+    });
+  }
+  if (usl != null) {
+    specShapes.push({
+      type: "line" as const,
+      x0: 0, x1: 1, xref: "paper" as const,
+      y0: usl, y1: usl,
+      line: { color: "#ef4444", width: 2, dash: "dash" as const },
+    });
+    specAnnotations.push({
+      x: 0, xref: "paper", y: usl,
+      text: `USL ${usl}`,
+      showarrow: false, xanchor: "left", yanchor: "top",
+      font: { color: "#ef4444", size: 10 },
+      bgcolor: "rgba(20,20,20,0.8)", bordercolor: "#ef4444", borderwidth: 1,
+    });
+  }
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const targetAnnotations: any[] = targetLines.map((t) => ({
@@ -521,8 +587,8 @@ export default function SpcChart({
       yanchor: "top",
     },
     margin: { l: 55, r: 20, t: 20, b: 90 },
-    shapes: [...splitShapes, ...targetShapes],
-    annotations: plotlyAnnotations,
+    shapes: [...splitShapes, ...targetShapes, ...specShapes],
+    annotations: [...plotlyAnnotations, ...specAnnotations],
     hoverlabel: {
       bgcolor: "#1e1e2e",
       bordercolor: method === "median" ? colors.medianLine : colors.meanLine,
@@ -1061,6 +1127,24 @@ export default function SpcChart({
             <span>Add Target</span>
           </button>
 
+          {/* ── Spec Limits ── */}
+          <button
+            onClick={() => setShowSpecInput((v) => !v)}
+            className={toolbarBtn(showSpecInput, "bg-red-700/60 border-red-500/60 text-white shadow-[0_0_12px_rgba(239,68,68,0.2)]")}
+          >
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none"
+              stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"
+              className={showSpecInput ? "text-white" : "text-gray-500"}>
+              <line x1="3" y1="6" x2="21" y2="6" />
+              <line x1="3" y1="18" x2="21" y2="18" />
+              <line x1="3" y1="12" x2="21" y2="12" strokeDasharray="4 2" />
+            </svg>
+            <span>Spec Limits</span>
+            {(lsl != null || usl != null) && (
+              <span className="text-[10px] font-bold tracking-wide px-1.5 py-0.5 rounded bg-red-500/20 text-red-300">SET</span>
+            )}
+          </button>
+
           {/* ── Show MR Chart toggle ── */}
           <button
             onClick={() => setShowMrChart((v) => !v)}
@@ -1233,6 +1317,95 @@ export default function SpcChart({
         </div>
       )}
 
+      {/* ── Spec limits input panel ── */}
+      {showSpecInput && !readOnly && (
+        <div className="flex items-end gap-3 p-3 rounded-xl border border-red-500/30 bg-red-950/10 flex-wrap">
+          <div className="flex flex-col gap-1">
+            <label className="text-[10px] text-red-400 font-semibold uppercase tracking-wider">
+              LSL (Lower Spec Limit)
+            </label>
+            <input
+              type="number"
+              value={lslDraft}
+              onChange={(e) => setLslDraft(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") {
+                  const v = parseFloat(lslDraft);
+                  setLsl(isNaN(v) ? undefined : v);
+                  onLslChange?.(isNaN(v) ? undefined : v);
+                }
+              }}
+              placeholder="e.g. 10"
+              className="w-32 bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-sm text-white placeholder-gray-600 outline-none focus:border-red-400/50 transition-colors"
+            />
+          </div>
+          <div className="flex flex-col gap-1">
+            <label className="text-[10px] text-red-400 font-semibold uppercase tracking-wider">
+              USL (Upper Spec Limit)
+            </label>
+            <input
+              type="number"
+              value={uslDraft}
+              onChange={(e) => setUslDraft(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") {
+                  const v = parseFloat(uslDraft);
+                  setUsl(isNaN(v) ? undefined : v);
+                  onUslChange?.(isNaN(v) ? undefined : v);
+                }
+              }}
+              placeholder="e.g. 50"
+              className="w-32 bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-sm text-white placeholder-gray-600 outline-none focus:border-red-400/50 transition-colors"
+            />
+          </div>
+          <div className="flex gap-2 pb-0.5">
+            <button
+              onClick={() => {
+                const l = parseFloat(lslDraft);
+                const u = parseFloat(uslDraft);
+                setLsl(isNaN(l) ? undefined : l);
+                setUsl(isNaN(u) ? undefined : u);
+                onLslChange?.(isNaN(l) ? undefined : l);
+                onUslChange?.(isNaN(u) ? undefined : u);
+              }}
+              className="px-4 py-2 rounded-lg text-sm font-semibold bg-red-600/80 hover:bg-red-600 text-white border border-red-500/50 transition-colors"
+            >
+              Apply
+            </button>
+            {(lsl != null || usl != null) && (
+              <button
+                onClick={() => {
+                  setLsl(undefined);
+                  setUsl(undefined);
+                  setLslDraft("");
+                  setUslDraft("");
+                  onLslChange?.(undefined);
+                  onUslChange?.(undefined);
+                }}
+                className="px-3 py-2 rounded-lg text-sm text-red-400 border border-red-500/20 hover:border-red-500/40 bg-red-950/20 transition-colors"
+              >
+                Clear
+              </button>
+            )}
+            <button
+              onClick={() => setShowSpecInput(false)}
+              className="px-3 py-2 rounded-lg text-sm text-gray-400 border border-white/10 hover:bg-white/5 transition-colors"
+            >
+              Close
+            </button>
+          </div>
+          {(lsl != null || usl != null) && (
+            <div className="w-full flex items-center gap-3 pt-1 text-[11px]">
+              {lsl != null && <span className="text-red-400">LSL = {lsl}</span>}
+              {usl != null && <span className="text-red-400">USL = {usl}</span>}
+              {lsl != null && usl != null && (
+                <span className="text-gray-600">Tolerance = {(usl - lsl).toFixed(2)}</span>
+              )}
+            </div>
+          )}
+        </div>
+      )}
+
       {/* ── Active target lines list ── */}
       {targetLines.length > 0 && (
         <div className="flex items-center gap-2 flex-wrap">
@@ -1359,6 +1532,8 @@ export default function SpcChart({
           values={histogramValues}
           title={localTitle}
           unit={unit}
+          lsl={lsl}
+          usl={usl}
         />
       )}
 
@@ -1610,6 +1785,96 @@ export default function SpcChart({
                 </div>
               );
             })}
+          </div>
+        </div>
+      )}
+
+      {/* ── Capability Statistics ── */}
+      {capability && activeTab === "control" && (
+        <div className="space-y-3">
+          <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-wider px-0.5">
+            Capability Analysis
+          </h3>
+          <div className="bg-white/[0.03] border border-red-500/20 rounded-xl p-4 space-y-4">
+            {/* Spec limit summary */}
+            <div className="flex items-center gap-4 text-xs">
+              {lsl != null && (
+                <span className="text-red-400 font-medium">LSL = {lsl}{unit ? ` ${unit}` : ""}</span>
+              )}
+              {usl != null && (
+                <span className="text-red-400 font-medium">USL = {usl}{unit ? ` ${unit}` : ""}</span>
+              )}
+              {lsl != null && usl != null && (
+                <span className="text-gray-500">Tolerance = {(usl - lsl).toFixed(2)}</span>
+              )}
+              <span className="text-gray-600">σ̂ = {capability.sigmaShort.toFixed(4)}</span>
+              <span className="text-gray-600">s = {capability.sigmaLong.toFixed(4)}</span>
+            </div>
+
+            {/* Capability indices grid */}
+            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-4">
+              {capability.cp != null && (
+                <div>
+                  <div className="text-[10px] text-gray-600 mb-0.5">Cp</div>
+                  <div className={`text-sm font-semibold ${
+                    capability.cp >= 1.33 ? "text-green-400" : capability.cp >= 1.0 ? "text-amber-400" : "text-red-400"
+                  }`}>
+                    {capability.cp.toFixed(3)}
+                  </div>
+                  <div className="text-[9px] text-gray-600 mt-0.5">
+                    {capability.cp >= 1.33 ? "capable" : capability.cp >= 1.0 ? "marginal" : "not capable"}
+                  </div>
+                </div>
+              )}
+              {capability.cpk != null && (
+                <div>
+                  <div className="text-[10px] text-gray-600 mb-0.5">Cpk</div>
+                  <div className={`text-sm font-semibold ${
+                    capability.cpk >= 1.33 ? "text-green-400" : capability.cpk >= 1.0 ? "text-amber-400" : "text-red-400"
+                  }`}>
+                    {capability.cpk.toFixed(3)}
+                  </div>
+                  <div className="text-[9px] text-gray-600 mt-0.5">
+                    {capability.cpk >= 1.33 ? "centered & capable" : capability.cpk >= 1.0 ? "marginal" : "off-center / not capable"}
+                  </div>
+                </div>
+              )}
+              {capability.pp != null && (
+                <div>
+                  <div className="text-[10px] text-gray-600 mb-0.5">Pp</div>
+                  <div className={`text-sm font-semibold ${
+                    capability.pp >= 1.33 ? "text-green-400" : capability.pp >= 1.0 ? "text-amber-400" : "text-red-400"
+                  }`}>
+                    {capability.pp.toFixed(3)}
+                  </div>
+                  <div className="text-[9px] text-gray-600 mt-0.5">overall potential</div>
+                </div>
+              )}
+              {capability.ppk != null && (
+                <div>
+                  <div className="text-[10px] text-gray-600 mb-0.5">Ppk</div>
+                  <div className={`text-sm font-semibold ${
+                    capability.ppk >= 1.33 ? "text-green-400" : capability.ppk >= 1.0 ? "text-amber-400" : "text-red-400"
+                  }`}>
+                    {capability.ppk.toFixed(3)}
+                  </div>
+                  <div className="text-[9px] text-gray-600 mt-0.5">overall performance</div>
+                </div>
+              )}
+              {capability.ppm != null && (
+                <div>
+                  <div className="text-[10px] text-gray-600 mb-0.5">PPM (est.)</div>
+                  <div className={`text-sm font-semibold ${
+                    capability.ppm < 66 ? "text-green-400" : capability.ppm < 6210 ? "text-amber-400" : "text-red-400"
+                  }`}>
+                    {capability.ppm < 1 ? capability.ppm.toExponential(2) : Math.round(capability.ppm).toLocaleString()}
+                  </div>
+                  <div className="text-[9px] text-gray-600 mt-0.5">
+                    DPMO: {capability.ppm < 1 ? capability.ppm.toExponential(2) : Math.round(capability.ppm).toLocaleString()}
+                  </div>
+                </div>
+              )}
+            </div>
           </div>
         </div>
       )}

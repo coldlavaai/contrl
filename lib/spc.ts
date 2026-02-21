@@ -180,6 +180,111 @@ export interface SpcOptions {
  * @param splitIndices - optional array of indices where the process splits
  * @param options - optional calculation options
  */
+// ── Capability Indices & PPM ─────────────────────────────────────────────────
+
+export interface CapabilityResult {
+  cp: number | null;
+  cpk: number | null;
+  pp: number | null;
+  ppk: number | null;
+  ppm: number | null;
+  sigmaShort: number;   // σ̂ = R̄ / d2
+  sigmaLong: number;    // s (sample std dev)
+}
+
+/** d2 constant for n=2 subgroup (XmR chart) */
+const D2 = 1.128;
+
+/**
+ * Standard normal CDF approximation (Abramowitz & Stegun 26.2.17).
+ * Max error ≈ 7.5 × 10⁻⁸.
+ */
+function normalCdf(x: number): number {
+  if (x < -8) return 0;
+  if (x > 8) return 1;
+  const a1 = 0.254829592;
+  const a2 = -0.284496736;
+  const a3 = 1.421413741;
+  const a4 = -1.453152027;
+  const a5 = 1.061405429;
+  const p = 0.3275911;
+  const sign = x < 0 ? -1 : 1;
+  const z = Math.abs(x) / Math.SQRT2;
+  const t = 1.0 / (1.0 + p * z);
+  const y = 1.0 - ((((a5 * t + a4) * t + a3) * t + a2) * t + a1) * t * Math.exp(-z * z);
+  return 0.5 * (1.0 + sign * y);
+}
+
+/**
+ * Calculate process capability indices (Cp, Cpk, Pp, Ppk) and PPM.
+ *
+ * @param values - All data values
+ * @param rBar - Average moving range (R̄) from SPC calculation
+ * @param xBar - Process mean (X̄)
+ * @param lsl - Lower Specification Limit (optional)
+ * @param usl - Upper Specification Limit (optional)
+ */
+export function calculateCapability(
+  values: number[],
+  rBar: number,
+  xBar: number,
+  lsl?: number | null,
+  usl?: number | null,
+): CapabilityResult {
+  const sigmaShort = rBar / D2; // σ̂ (within-subgroup / short-term)
+
+  // Long-term sigma: sample standard deviation
+  const n = values.length;
+  const sigmaLong =
+    n > 1
+      ? Math.sqrt(values.reduce((acc, v) => acc + (v - xBar) ** 2, 0) / (n - 1))
+      : 0;
+
+  const hasLsl = lsl != null && !isNaN(lsl);
+  const hasUsl = usl != null && !isNaN(usl);
+  const hasBoth = hasLsl && hasUsl;
+
+  let cp: number | null = null;
+  let cpk: number | null = null;
+  let pp: number | null = null;
+  let ppk: number | null = null;
+  let ppm: number | null = null;
+
+  if (hasBoth && sigmaShort > 0) {
+    cp = (usl! - lsl!) / (6 * sigmaShort);
+    cpk = Math.min(
+      (usl! - xBar) / (3 * sigmaShort),
+      (xBar - lsl!) / (3 * sigmaShort),
+    );
+  } else if (sigmaShort > 0) {
+    // One-sided Cpk
+    if (hasUsl) cpk = (usl! - xBar) / (3 * sigmaShort);
+    if (hasLsl) cpk = (xBar - lsl!) / (3 * sigmaShort);
+  }
+
+  if (hasBoth && sigmaLong > 0) {
+    pp = (usl! - lsl!) / (6 * sigmaLong);
+    ppk = Math.min(
+      (usl! - xBar) / (3 * sigmaLong),
+      (xBar - lsl!) / (3 * sigmaLong),
+    );
+  } else if (sigmaLong > 0) {
+    if (hasUsl) ppk = (usl! - xBar) / (3 * sigmaLong);
+    if (hasLsl) ppk = (xBar - lsl!) / (3 * sigmaLong);
+  }
+
+  // PPM using normal distribution approximation (long-term sigma)
+  if ((hasLsl || hasUsl) && sigmaLong > 0) {
+    let pBelow = 0;
+    let pAbove = 0;
+    if (hasLsl) pBelow = normalCdf((lsl! - xBar) / sigmaLong);
+    if (hasUsl) pAbove = 1 - normalCdf((usl! - xBar) / sigmaLong);
+    ppm = (pBelow + pAbove) * 1_000_000;
+  }
+
+  return { cp, cpk, pp, ppk, ppm, sigmaShort, sigmaLong };
+}
+
 export function calculateSpc(
   values: number[],
   dates: string[],
