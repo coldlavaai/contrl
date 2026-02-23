@@ -1,4 +1,4 @@
-// Dummy dataset: Void Properties - Gosport Council
+// Dummy dataset: Weekly Operations Demo
 // 52 weeks of realistic SPC data with natural variation and a few signals
 
 export interface Measure {
@@ -61,7 +61,7 @@ const turnaroundDays: number[] = [
 const dates = weeklyDates(52);
 
 export const dummyDataset: Dataset = {
-  name: "Void Properties — Gosport Council",
+  name: "Weekly Operations — Demo Dataset",
   dates,
   measures: [
     { name: "Keys Out", unit: "keys/week", data: keysOut },

@@ -12,7 +12,7 @@ export const metadata: Metadata = {
   title: "Contrl — Statistical Process Control",
   description:
     "Understand variation. Drive improvement. Cloud-based SPC charts for public sector operational teams.",
-  keywords: ["SPC", "Statistical Process Control", "councils", "housing", "improvement"],
+  keywords: ["SPC", "Statistical Process Control", "quality", "process improvement", "control charts"],
 };
 
 export default function RootLayout({

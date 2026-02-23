@@ -96,7 +96,7 @@ const DEMO_CONTACTS: Contact[] = [
   {
     id: "2",
     name: "Sarah Chen",
-    company: "Greenfield Council",
+    company: "Greenfield Group",
     email: "s.chen@greenfield.gov.uk",
     phone: "+44 1234 567890",
     channel: "email",

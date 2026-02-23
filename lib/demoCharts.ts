@@ -28,7 +28,7 @@ function monthlyDates(count: number, startISO = "2023-01-01"): string[] {
 }
 
 // ─── Chart 1: Customer Complaint Resolution Time ─────────────────────────────
-// Social housing council — days to close complaints
+// Service team — days to close complaints
 // Baseline ~18 days → intervention at week 26 → drops to ~11 days
 const complaintDates = weeklyDates(52, "2023-01-09");
 const complaintValues = [
@@ -66,7 +66,7 @@ const chart1: Omit<SavedChart, "id"> = {
 };
 
 // ─── Chart 2: Void Property Turnaround (weeks) ───────────────────────────────
-// Housing association — weeks to re-let a void property
+// Operations team — weeks to complete turnaround
 // Baseline ~7.5 weeks, long run above mean mid-year, trend improvement Q4
 const voidDates = weeklyDates(48, "2023-01-16");
 const voidValues = [
@@ -79,10 +79,10 @@ const voidValues = [
 ];
 
 const chart2: Omit<SavedChart, "id"> = {
-  title: "Void Property Turnaround",
+  title: "Service Turnaround Time",
   savedAt: Date.now() - 1000 * 60 * 60 * 24,
   measure: {
-    name: "Void Property Turnaround",
+    name: "Service Turnaround Time",
     unit: "weeks",
     dates: voidDates,
     values: voidValues,
@@ -90,8 +90,8 @@ const chart2: Omit<SavedChart, "id"> = {
   splitIndices: [],
   splitModes: {},
   annotations: [
-    { dateIndex: 11, text: "Contractor delays Q2" },
-    { dateIndex: 27, text: "Fast-track repairs pilot" },
+    { dateIndex: 11, text: "Supplier delays Q2" },
+    { dateIndex: 27, text: "Fast-track process pilot" },
   ],
   targetLines: [
     { id: "t1", value: 6, label: "Target: 6 wks", color: "green" },

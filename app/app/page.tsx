@@ -416,7 +416,7 @@ export default function DashboardPage() {
                 Load Demo Data
               </div>
               <div className="text-xs text-gray-500 mt-1">
-                Explore with the Gosport Council dataset
+                Explore with the demo dataset
               </div>
             </div>
             <ArrowRight className="absolute top-5 right-5 h-4 w-4 text-gray-700 group-hover:text-purple-500 transition-colors" />

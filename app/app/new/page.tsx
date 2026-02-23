@@ -804,7 +804,7 @@ function NewChartPageInner() {
                 }}
                 className="w-full py-3 px-4 rounded-xl border border-indigo-500/30 bg-indigo-950/20 text-indigo-400 hover:bg-indigo-950/40 hover:border-indigo-400/50 transition-all text-sm font-medium"
               >
-                Load demo dataset — Void Properties, Gosport Council
+                Load demo dataset — Weekly Operations
               </button>
             </>
           )}

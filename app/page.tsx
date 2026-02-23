@@ -36,8 +36,8 @@ export default function LandingPage() {
 
           <p className="mt-6 text-lg sm:text-xl text-gray-400 max-w-2xl leading-relaxed">
             Contrl turns your operational data into Statistical Process Control charts
-            — the gold standard for spotting signals in noise. Built for council teams,
-            housing services, and public sector managers.
+            — the gold standard for spotting signals in noise. Built for teams that need
+            to understand variation and drive improvement.
           </p>
 
           <div className="mt-10 flex flex-col sm:flex-row gap-4 items-center">
@@ -108,8 +108,8 @@ export default function LandingPage() {
               },
               {
                 icon: "🏛️",
-                title: "Built for Public Sector",
-                desc: "Designed for housing teams, council services, and operational managers who need evidence-based improvement tools.",
+                title: "Built for Any Sector",
+                desc: "Designed for operational managers, service teams, and anyone who needs evidence-based improvement tools.",
               },
             ].map((f) => (
               <div
