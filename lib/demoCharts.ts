@@ -368,33 +368,34 @@ export const DEMO_CHARTS: Omit<SavedChart, "id">[] = [
   chart7,
 ];
 
-export const DEMO_SEED_KEY = "contrl_demo_seeded";
+export const DEMO_SEED_KEY = "contrl_demo_seeded_v2";
 
 /** Seed demo charts into localStorage if the user has no charts yet */
 export function seedDemoChartsIfEmpty(): void {
   if (typeof window === "undefined") return;
-  // Only seed once per browser
+  // Only seed once per version
   if (localStorage.getItem(DEMO_SEED_KEY)) return;
-  // Only seed if no real charts exist
-  const existing = localStorage.getItem("contrl_charts");
-  if (existing) {
-    try {
-      const parsed = JSON.parse(existing);
-      if (Array.isArray(parsed) && parsed.length > 0) {
-        // User already has charts — mark as seeded and skip
-        localStorage.setItem(DEMO_SEED_KEY, "1");
-        return;
-      }
-    } catch {
-      // malformed — fall through to seed
-    }
-  }
 
-  // Seed the demo charts with stable IDs
+  // Seed the demo charts with stable IDs, merging with any existing user charts
   const seeded = DEMO_CHARTS.map((c, i) => ({
     ...c,
     id: `demo-${i + 1}`,
   }));
-  localStorage.setItem("contrl_charts", JSON.stringify(seeded));
+
+  // Keep any non-demo user charts
+  const existing = localStorage.getItem("contrl_charts");
+  let userCharts: Array<{ id: string }> = [];
+  if (existing) {
+    try {
+      const parsed = JSON.parse(existing);
+      if (Array.isArray(parsed)) {
+        userCharts = parsed.filter((c: { id: string }) => !c.id?.startsWith("demo-"));
+      }
+    } catch {
+      // ignore
+    }
+  }
+
+  localStorage.setItem("contrl_charts", JSON.stringify([...seeded, ...userCharts]));
   localStorage.setItem(DEMO_SEED_KEY, "1");
 }
