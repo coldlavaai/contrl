@@ -39,7 +39,7 @@ export interface SavedChart {
   // Extended chart state (optional for backwards compatibility)
   targetLines?: TargetLine[];
   method?: "mean" | "median";
-  splitModes?: Record<number, "run">;
+  splitModes?: Record<number, "run" | "trend">;
   frozenLimits?: boolean;
   // Priority 2 features
   omittedIndices?: number[];
@@ -199,7 +199,7 @@ function rowToChart(row: Record<string, unknown>): SavedChart {
     annotations: (row.annotations as Annotation[]) ?? [],
     targetLines: (row.target_lines as TargetLine[]) ?? [],
     method: (row.method as "mean" | "median") ?? "mean",
-    splitModes: (row.split_modes as Record<number, "run">) ?? {},
+    splitModes: (row.split_modes as Record<number, "run" | "trend">) ?? {},
     frozenLimits: (row.frozen_limits as boolean) ?? false,
     omittedIndices: (row.omitted_indices as number[]) ?? [],
     showTrendLine: (row.show_trend_line as boolean) ?? false,

@@ -24,6 +24,7 @@ const RULES: RuleInfo[] = [
   { key: "rule3", rule: 3, short: NELSON_RULE_NAMES[3], detail: "6 consecutive points increasing or decreasing" },
   { key: "rule4", rule: 4, short: NELSON_RULE_NAMES[4], detail: "14 consecutive points alternating up/down" },
   { key: "rule5", rule: 5, short: NELSON_RULE_NAMES[5], detail: "2 of 3 consecutive points beyond 2σ (same side)" },
+  { key: "rule5b", rule: 9, short: NELSON_RULE_NAMES[9], detail: "3+ successive points in 2σ-3σ band on same side" },
   { key: "rule6", rule: 6, short: NELSON_RULE_NAMES[6], detail: "4 of 5 consecutive points beyond 1σ (same side)" },
   { key: "rule7", rule: 7, short: NELSON_RULE_NAMES[7], detail: "15 consecutive points within 1σ — mixture signal" },
   { key: "rule8", rule: 8, short: NELSON_RULE_NAMES[8], detail: "8 consecutive points beyond 1σ on either side" },
@@ -53,6 +54,7 @@ export default function NelsonRulesPanel({ config, onChange, violationCounts }: 
       rule3Count: 6,
       rule4: false,
       rule5: false,
+      rule5b: false,
       rule6: false,
       rule7: false,
       rule8: false,
@@ -78,7 +80,7 @@ export default function NelsonRulesPanel({ config, onChange, violationCounts }: 
             ? "bg-amber-500/20 text-amber-300"
             : "bg-white/5 text-gray-600"
         }`}>
-          {enabledCount}/8
+          {enabledCount}/{RULES.length}
         </span>
       </button>
 

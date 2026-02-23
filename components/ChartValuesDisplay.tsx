@@ -6,7 +6,7 @@ interface ChartValuesDisplayProps {
   spc: SpcResult;
   method: "mean" | "median";
   unit: string;
-  splitModes: Record<number, "run">;
+  splitModes: Record<number, "run" | "trend">;
   colors: {
     meanLine: string;
     medianLine: string;

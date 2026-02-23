@@ -2,7 +2,7 @@
 
 import dynamic from "next/dynamic";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { calculateSpc, calculateCapability, calculateTrendLimits, SpcResult, NelsonRuleConfig, DEFAULT_NELSON_RULES, NELSON_RULE_NAMES, TrendLimitSegment } from "@/lib/spc";
+import { calculateSpc, calculateCapability, SpcResult, NelsonRuleConfig, DEFAULT_NELSON_RULES, NELSON_RULE_NAMES } from "@/lib/spc";
 import { Annotation, TargetLine, saveChart, ChartColors } from "@/lib/chartStorage";
 import HistogramChart from "@/components/HistogramChart";
 import BoxPlot from "@/components/BoxPlot";
@@ -33,7 +33,7 @@ interface SpcChartProps {
   readOnly?: boolean;
   // Restored state (for library view)
   initialMethod?: "mean" | "median";
-  initialSplitModes?: Record<number, "run">;
+  initialSplitModes?: Record<number, "run" | "trend">;
   initialFrozenLimits?: boolean;
   initialTargetLines?: TargetLine[];
   // Feature 2: Omit points
@@ -60,11 +60,7 @@ interface SpcChartProps {
   // Zone lines (1σ, 2σ)
   initialShowZoneLines?: boolean;
   onShowZoneLinesChange?: (show: boolean) => void;
-  // Trend control limits (diagonal)
-  initialTrendControlLimits?: boolean;
-  initialTrendControlSegments?: TrendLimitSegment[];
-  onTrendControlLimitsChange?: (enabled: boolean) => void;
-  onTrendControlSegmentsChange?: (segments: TrendLimitSegment[]) => void;
+  // (Trend control limits now integrated into split modes — no separate props needed)
   // LCL below zero handling
   initialAllowNegativeLcl?: boolean;
   onAllowNegativeLclChange?: (allow: boolean) => void;
@@ -143,10 +139,6 @@ export default function SpcChart({
   onNelsonRulesChange,
   initialShowZoneLines = false,
   onShowZoneLinesChange,
-  initialTrendControlLimits = false,
-  initialTrendControlSegments = [],
-  onTrendControlLimitsChange,
-  onTrendControlSegmentsChange,
   initialAllowNegativeLcl = false,
   onAllowNegativeLclChange,
   initialChartTitle,
@@ -229,7 +221,7 @@ export default function SpcChart({
   const [method, setMethod] = useState<"mean" | "median">(initialMethod);
 
   // ── Feature: Split Modes ────────────────────────────────────────────────
-  const [splitModes, setSplitModes] = useState<Record<number, "run">>(initialSplitModes);
+  const [splitModes, setSplitModes] = useState<Record<number, "run" | "trend">>(initialSplitModes);
 
   // ── Feature: Freeze Limits ─────────────────────────────────────────────
   const [frozenLimits, setFrozenLimits] = useState(initialFrozenLimits);
@@ -273,11 +265,7 @@ export default function SpcChart({
   // ── Zone lines (1σ, 2σ) ────────────────────────────────────────────────────
   const [showZoneLines, setShowZoneLines] = useState(initialShowZoneLines);
 
-  // ── Trend control limits (diagonal) ────────────────────────────────────────
-  const [trendControlLimits, setTrendControlLimits] = useState(initialTrendControlLimits);
-  const [trendControlSegments, setTrendControlSegments] = useState<TrendLimitSegment[]>(initialTrendControlSegments);
-  const [showTrendSegmentInput, setShowTrendSegmentInput] = useState(false);
-  const [trendSegDraft, setTrendSegDraft] = useState({ startDate: "", endDate: "" });
+  // ── (Legacy: trend control limits state removed — now part of split modes) ──
 
   // ── LCL below zero handling ────────────────────────────────────────────────
   const [allowNegativeLcl, setAllowNegativeLcl] = useState(initialAllowNegativeLcl);
@@ -316,8 +304,6 @@ export default function SpcChart({
       lsl,
       usl,
       showZoneLines,
-      trendControlLimits,
-      trendControlSegments: trendControlSegments.length > 0 ? trendControlSegments : undefined,
       allowNegativeLcl,
       chartTitle: chartTitle || undefined,
     });
@@ -382,16 +368,6 @@ export default function SpcChart({
     () => calculateSpc(filteredValues, filteredDates, filteredSplitIndices, { method, splitModes, frozenLimits, omittedIndices: filteredOmittedIndices, nelsonRules, allowNegativeLcl }),
     [filteredValues, filteredDates, filteredSplitIndices, method, splitModes, frozenLimits, filteredOmittedIndices, nelsonRules, allowNegativeLcl]
   );
-
-  // ── Trend control limits calculation ──────────────────────────────────────
-  const trendLimits = useMemo(() => {
-    if (!trendControlLimits) return null;
-    return calculateTrendLimits(
-      filteredValues,
-      filteredDates,
-      trendControlSegments.length > 0 ? trendControlSegments : undefined,
-    );
-  }, [trendControlLimits, filteredValues, filteredDates, trendControlSegments]);
 
   const segmentSignals = useMemo(
     () =>
@@ -591,216 +567,190 @@ export default function SpcChart({
     const n = seg.endIndex - seg.startIndex + 1;
     const isFirst = i === 0;
 
-    segmentLineTraces.push({
-      type: "scatter",
-      mode: "lines",
-      name: method === "median" ? "M̃ (Median)" : "Mean (X\u0304)",
-      legendgroup: "mean",
-      showlegend: isFirst,
-      x: segDates,
-      y: Array(n).fill(seg.mean),
-      line: { color: method === "median" ? colors.medianLine : colors.meanLine, width: 2, dash: "dash" },
-      hovertemplate: `${method === "median" ? "Median" : "Mean"}: ${seg.mean.toFixed(2)}<extra></extra>`,
-    });
+    if (seg.trendLine) {
+      // ── Trend (diagonal) segment ──────────────────────────────────────────
+      const tl = seg.trendLine;
 
-    if (!seg.runSplitMode) {
-      // Calculate sigma for zone lines
-      const sigma3 = seg.ucl - seg.mean; // 3σ distance
-      const sigma1 = sigma3 / 3;
+      // Diagonal centre line
+      segmentLineTraces.push({
+        type: "scatter",
+        mode: "lines",
+        name: "Trend Centre",
+        legendgroup: "mean",
+        showlegend: isFirst,
+        x: segDates,
+        y: tl.centre,
+        line: { color: "#22c55e", width: 2.5 },
+        hovertemplate: `Trend: %{y:.2f}<extra></extra>`,
+      });
 
-      // LCL handling: hide if < 0 and allowNegativeLcl is false
-      const showLcl = allowNegativeLcl || seg.lcl >= 0;
+      // Diagonal UCL
+      segmentLineTraces.push({
+        type: "scatter",
+        mode: "lines",
+        name: "UCL",
+        legendgroup: "ucl",
+        showlegend: isFirst,
+        x: segDates,
+        y: tl.ucl,
+        line: { color: colors.uclLine, width: 1.5 },
+        hovertemplate: `UCL: %{y:.2f}<extra></extra>`,
+      });
 
-      segmentLineTraces.push(
-        {
+      // Diagonal LCL (respect allowNegativeLcl)
+      const lclValues = tl.lcl.map((v) => (allowNegativeLcl || v >= 0) ? v : null);
+      const hasVisibleLcl = lclValues.some((v) => v !== null);
+      if (hasVisibleLcl) {
+        segmentLineTraces.push({
           type: "scatter",
           mode: "lines",
-          name: "UCL",
-          legendgroup: "ucl",
-          showlegend: isFirst,
-          x: segDates,
-          y: Array(n).fill(seg.ucl),
-          line: { color: colors.uclLine, width: 1.5, dash: "dash" },
-          hovertemplate: `UCL: ${seg.ucl.toFixed(2)}<extra></extra>`,
-        },
-        ...(showLcl ? [{
-          type: "scatter" as const,
-          mode: "lines" as const,
           name: "LCL",
           legendgroup: "lcl",
           showlegend: isFirst,
           x: segDates,
-          y: Array(n).fill(seg.lcl),
-          line: { color: colors.lclLine, width: 1.5, dash: "dash" as const },
-          hovertemplate: `LCL: ${seg.lcl.toFixed(2)}<extra></extra>`,
-        }] : [])
-      );
+          y: lclValues,
+          line: { color: colors.lclLine, width: 1.5 },
+          hovertemplate: `LCL: %{y:.2f}<extra></extra>`,
+        });
+      }
 
-      // ── Zone lines (±1σ, ±2σ) ──
+      // Diagonal zone lines
       if (showZoneLines) {
-        const sigma1Upper = seg.mean + sigma1;
-        const sigma1Lower = seg.mean - sigma1;
-        const sigma2Upper = seg.mean + 2 * sigma1;
-        const sigma2Lower = seg.mean - 2 * sigma1;
-
         segmentLineTraces.push(
-          // +1σ
           {
-            type: "scatter",
-            mode: "lines",
-            name: "+1σ",
-            legendgroup: "sigma1",
-            showlegend: isFirst,
-            x: segDates,
-            y: Array(n).fill(sigma1Upper),
+            type: "scatter", mode: "lines", name: "+1σ", legendgroup: "sigma1", showlegend: isFirst,
+            x: segDates, y: tl.sigma1Upper,
             line: { color: colors.sigma1Line, width: 1, dash: "dot" },
-            hovertemplate: `+1σ: ${sigma1Upper.toFixed(2)}<extra></extra>`,
+            hovertemplate: `+1σ: %{y:.2f}<extra></extra>`,
           },
-          // -1σ
           {
-            type: "scatter",
-            mode: "lines",
-            name: "-1σ",
-            legendgroup: "sigma1",
-            showlegend: false,
-            x: segDates,
-            y: Array(n).fill(sigma1Lower),
+            type: "scatter", mode: "lines", name: "-1σ", legendgroup: "sigma1", showlegend: false,
+            x: segDates, y: tl.sigma1Lower,
             line: { color: colors.sigma1Line, width: 1, dash: "dot" },
-            hovertemplate: `-1σ: ${sigma1Lower.toFixed(2)}<extra></extra>`,
+            hovertemplate: `-1σ: %{y:.2f}<extra></extra>`,
           },
-          // +2σ
           {
-            type: "scatter",
-            mode: "lines",
-            name: "+2σ",
-            legendgroup: "sigma2",
-            showlegend: isFirst,
-            x: segDates,
-            y: Array(n).fill(sigma2Upper),
+            type: "scatter", mode: "lines", name: "+2σ", legendgroup: "sigma2", showlegend: isFirst,
+            x: segDates, y: tl.sigma2Upper,
             line: { color: colors.sigma2Line, width: 1, dash: "dash" },
-            hovertemplate: `+2σ: ${sigma2Upper.toFixed(2)}<extra></extra>`,
+            hovertemplate: `+2σ: %{y:.2f}<extra></extra>`,
           },
-          // -2σ
           {
-            type: "scatter",
-            mode: "lines",
-            name: "-2σ",
-            legendgroup: "sigma2",
-            showlegend: false,
-            x: segDates,
-            y: Array(n).fill(sigma2Lower),
+            type: "scatter", mode: "lines", name: "-2σ", legendgroup: "sigma2", showlegend: false,
+            x: segDates, y: tl.sigma2Lower,
             line: { color: colors.sigma2Line, width: 1, dash: "dash" },
-            hovertemplate: `-2σ: ${sigma2Lower.toFixed(2)}<extra></extra>`,
+            hovertemplate: `-2σ: %{y:.2f}<extra></extra>`,
           }
         );
       }
-    }
-  });
-
-  // ── Trend control limit traces ────────────────────────────────────────────
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const trendControlTraces: any[] = [];
-  if (trendLimits) {
-    // Centre trend line
-    const trendX: string[] = [];
-    const trendY: number[] = [];
-    const trendUclX: string[] = [];
-    const trendUclY: number[] = [];
-    const trendLclX: string[] = [];
-    const trendLclY: number[] = [];
-
-    for (let i = 0; i < filteredDates.length; i++) {
-      if (trendLimits.trendCentre[i] != null) {
-        trendX.push(filteredDates[i]);
-        trendY.push(trendLimits.trendCentre[i]!);
-      }
-      if (trendLimits.trendUcl[i] != null) {
-        trendUclX.push(filteredDates[i]);
-        trendUclY.push(trendLimits.trendUcl[i]!);
-      }
-      if (trendLimits.trendLcl[i] != null) {
-        const lclVal = trendLimits.trendLcl[i]!;
-        if (allowNegativeLcl || lclVal >= 0) {
-          trendLclX.push(filteredDates[i]);
-          trendLclY.push(lclVal);
-        }
-      }
-    }
-
-    if (trendX.length > 0) {
-      trendControlTraces.push({
+    } else {
+      // ── Normal horizontal segment ─────────────────────────────────────────
+      segmentLineTraces.push({
         type: "scatter",
         mode: "lines",
-        name: "Trend Centre",
-        legendgroup: "trendCtrl",
-        showlegend: true,
-        x: trendX,
-        y: trendY,
-        line: { color: "#22c55e", width: 2.5, dash: "solid" },
-        hovertemplate: `Trend: %{y:.2f}<extra></extra>`,
+        name: method === "median" ? "M̃ (Median)" : "Mean (X\u0304)",
+        legendgroup: "mean",
+        showlegend: isFirst,
+        x: segDates,
+        y: Array(n).fill(seg.mean),
+        line: { color: method === "median" ? colors.medianLine : colors.meanLine, width: 2, dash: "dash" },
+        hovertemplate: `${method === "median" ? "Median" : "Mean"}: ${seg.mean.toFixed(2)}<extra></extra>`,
       });
-    }
 
-    if (trendUclX.length > 0) {
-      trendControlTraces.push({
-        type: "scatter",
-        mode: "lines",
-        name: "Trend UCL",
-        legendgroup: "trendCtrl",
-        showlegend: true,
-        x: trendUclX,
-        y: trendUclY,
-        line: { color: "#ef4444", width: 1.5, dash: "solid" },
-        hovertemplate: `Trend UCL: %{y:.2f}<extra></extra>`,
-      });
-    }
+      if (!seg.runSplitMode) {
+        // Calculate sigma for zone lines
+        const sigma3 = seg.ucl - seg.mean; // 3σ distance
+        const sigma1 = sigma3 / 3;
 
-    if (trendLclX.length > 0) {
-      trendControlTraces.push({
-        type: "scatter",
-        mode: "lines",
-        name: "Trend LCL",
-        legendgroup: "trendCtrl",
-        showlegend: true,
-        x: trendLclX,
-        y: trendLclY,
-        line: { color: "#ef4444", width: 1.5, dash: "solid" },
-        hovertemplate: `Trend LCL: %{y:.2f}<extra></extra>`,
-      });
-    }
+        // LCL handling: hide if < 0 and allowNegativeLcl is false
+        const showLcl = allowNegativeLcl || seg.lcl >= 0;
 
-    // Zone lines for trend limits
-    if (showZoneLines) {
-      for (const [key, lineArr, color, dash, legendgroup, showlegend] of [
-        ["Trend +1σ", trendLimits.trend1Upper, colors.sigma1Line, "dot", "trendSigma1", true],
-        ["Trend -1σ", trendLimits.trend1Lower, colors.sigma1Line, "dot", "trendSigma1", false],
-        ["Trend +2σ", trendLimits.trend2Upper, colors.sigma2Line, "dash", "trendSigma2", true],
-        ["Trend -2σ", trendLimits.trend2Lower, colors.sigma2Line, "dash", "trendSigma2", false],
-      ] as const) {
-        const lineX: string[] = [];
-        const lineY: number[] = [];
-        for (let i = 0; i < filteredDates.length; i++) {
-          if ((lineArr as (number | null)[])[i] != null) {
-            lineX.push(filteredDates[i]);
-            lineY.push((lineArr as (number | null)[])[i]!);
-          }
-        }
-        if (lineX.length > 0) {
-          trendControlTraces.push({
+        segmentLineTraces.push(
+          {
             type: "scatter",
             mode: "lines",
-            name: key,
-            legendgroup,
-            showlegend,
-            x: lineX,
-            y: lineY,
-            line: { color, width: 1, dash },
-            hovertemplate: `${key}: %{y:.2f}<extra></extra>`,
-          });
+            name: "UCL",
+            legendgroup: "ucl",
+            showlegend: isFirst,
+            x: segDates,
+            y: Array(n).fill(seg.ucl),
+            line: { color: colors.uclLine, width: 1.5, dash: "dash" },
+            hovertemplate: `UCL: ${seg.ucl.toFixed(2)}<extra></extra>`,
+          },
+          ...(showLcl ? [{
+            type: "scatter" as const,
+            mode: "lines" as const,
+            name: "LCL",
+            legendgroup: "lcl",
+            showlegend: isFirst,
+            x: segDates,
+            y: Array(n).fill(seg.lcl),
+            line: { color: colors.lclLine, width: 1.5, dash: "dash" as const },
+            hovertemplate: `LCL: ${seg.lcl.toFixed(2)}<extra></extra>`,
+          }] : [])
+        );
+
+        // ── Zone lines (±1σ, ±2σ) ──
+        if (showZoneLines) {
+          const sigma1Upper = seg.mean + sigma1;
+          const sigma1Lower = seg.mean - sigma1;
+          const sigma2Upper = seg.mean + 2 * sigma1;
+          const sigma2Lower = seg.mean - 2 * sigma1;
+
+          segmentLineTraces.push(
+            // +1σ
+            {
+              type: "scatter",
+              mode: "lines",
+              name: "+1σ",
+              legendgroup: "sigma1",
+              showlegend: isFirst,
+              x: segDates,
+              y: Array(n).fill(sigma1Upper),
+              line: { color: colors.sigma1Line, width: 1, dash: "dot" },
+              hovertemplate: `+1σ: ${sigma1Upper.toFixed(2)}<extra></extra>`,
+            },
+            // -1σ
+            {
+              type: "scatter",
+              mode: "lines",
+              name: "-1σ",
+              legendgroup: "sigma1",
+              showlegend: false,
+              x: segDates,
+              y: Array(n).fill(sigma1Lower),
+              line: { color: colors.sigma1Line, width: 1, dash: "dot" },
+              hovertemplate: `-1σ: ${sigma1Lower.toFixed(2)}<extra></extra>`,
+            },
+            // +2σ
+            {
+              type: "scatter",
+              mode: "lines",
+              name: "+2σ",
+              legendgroup: "sigma2",
+              showlegend: isFirst,
+              x: segDates,
+              y: Array(n).fill(sigma2Upper),
+              line: { color: colors.sigma2Line, width: 1, dash: "dash" },
+              hovertemplate: `+2σ: ${sigma2Upper.toFixed(2)}<extra></extra>`,
+            },
+            // -2σ
+            {
+              type: "scatter",
+              mode: "lines",
+              name: "-2σ",
+              legendgroup: "sigma2",
+              showlegend: false,
+              x: segDates,
+              y: Array(n).fill(sigma2Lower),
+              line: { color: colors.sigma2Line, width: 1, dash: "dash" },
+              hovertemplate: `-2σ: ${sigma2Lower.toFixed(2)}<extra></extra>`,
+            }
+          );
         }
       }
     }
-  }
+  });
 
   // ── Plotly annotations ────────────────────────────────────────────────────
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -834,8 +784,6 @@ export default function SpcChart({
     ...segmentLineTraces,
     // 2. Trend lines (if enabled)
     ...trendTraces.traces,
-    // 2b. Trend control limits (diagonal limits)
-    ...trendControlTraces,
     // 3. Main data connecting line (with gaps at omitted positions)
     {
       type: "scatter",
@@ -1177,14 +1125,25 @@ export default function SpcChart({
     }
   };
 
-  // ── Run Split toggle ──────────────────────────────────────────────────────
-  const toggleRunSplit = (splitIndex: number) => {
+  // ── Split mode toggle: normal → trend → run → normal ─────────────────────
+  const cycleSplitMode = (splitIndex: number, targetMode?: "run" | "trend") => {
     setSplitModes((prev) => {
       const next = { ...prev };
-      if (next[splitIndex] === "run") {
-        delete next[splitIndex];
+      if (targetMode) {
+        if (next[splitIndex] === targetMode) {
+          delete next[splitIndex];
+        } else {
+          next[splitIndex] = targetMode;
+        }
       } else {
-        next[splitIndex] = "run";
+        // Cycle: none → trend → run → none
+        if (!next[splitIndex]) {
+          next[splitIndex] = "trend";
+        } else if (next[splitIndex] === "trend") {
+          next[splitIndex] = "run";
+        } else {
+          delete next[splitIndex];
+        }
       }
       return next;
     });
@@ -1489,27 +1448,6 @@ export default function SpcChart({
             </svg>
             <span>Zone Lines</span>
             <span className={onOffBadge(showZoneLines)}>{showZoneLines ? "ON" : "OFF"}</span>
-          </button>
-
-          {/* ── Trend Control Limits toggle ── */}
-          <button
-            onClick={() => {
-              const next = !trendControlLimits;
-              setTrendControlLimits(next);
-              onTrendControlLimitsChange?.(next);
-            }}
-            className={toolbarBtn(trendControlLimits, "bg-emerald-700/60 border-emerald-500/60 text-white shadow-[0_0_12px_rgba(34,197,94,0.3)]")}
-            title="Trend (diagonal) control limits — line of best fit with parallel limits"
-          >
-            <svg width="13" height="13" viewBox="0 0 24 24" fill="none"
-              stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"
-              className={trendControlLimits ? "text-white" : "text-gray-500"}>
-              <line x1="2" y1="20" x2="22" y2="4" />
-              <line x1="2" y1="16" x2="22" y2="0" strokeDasharray="4 2" opacity="0.5" />
-              <line x1="2" y1="24" x2="22" y2="8" strokeDasharray="4 2" opacity="0.5" />
-            </svg>
-            <span>Trend Limits</span>
-            <span className={onOffBadge(trendControlLimits)}>{trendControlLimits ? "ON" : "OFF"}</span>
           </button>
 
           {/* ── LCL Below Zero toggle ── */}
@@ -1818,96 +1756,6 @@ export default function SpcChart({
               {lsl != null && usl != null && (
                 <span className="text-gray-600">Tolerance = {(usl - lsl).toFixed(2)}</span>
               )}
-            </div>
-          )}
-        </div>
-      )}
-
-      {/* ── Trend control segments panel ── */}
-      {trendControlLimits && !readOnly && (
-        <div className="p-3 rounded-xl border border-emerald-500/30 bg-emerald-950/10 space-y-3">
-          <div className="flex items-center justify-between">
-            <span className="text-[11px] font-semibold text-emerald-400 uppercase tracking-wider">
-              Trend Limit Segments
-            </span>
-            <button
-              onClick={() => setShowTrendSegmentInput((v) => !v)}
-              className="text-xs px-2.5 py-1 rounded-md border border-emerald-500/30 text-emerald-400 hover:bg-emerald-950/30 transition-colors"
-            >
-              {showTrendSegmentInput ? "Cancel" : "+ Add Segment"}
-            </button>
-          </div>
-
-          {trendControlSegments.length === 0 && !showTrendSegmentInput && (
-            <p className="text-xs text-gray-600 italic">
-              No segments defined — trend limits apply to entire dataset.
-            </p>
-          )}
-
-          {trendControlSegments.length > 0 && (
-            <div className="flex flex-wrap gap-2">
-              {trendControlSegments.map((seg, idx) => (
-                <div key={idx} className="flex items-center gap-1.5 px-2.5 py-1 rounded-md border border-emerald-500/20 text-xs text-emerald-300 bg-emerald-950/20">
-                  <span>{seg.startDate} → {seg.endDate}</span>
-                  <button
-                    onClick={() => {
-                      const next = trendControlSegments.filter((_, i) => i !== idx);
-                      setTrendControlSegments(next);
-                      onTrendControlSegmentsChange?.(next);
-                    }}
-                    className="text-red-400 hover:text-red-300 ml-1"
-                  >✕</button>
-                </div>
-              ))}
-            </div>
-          )}
-
-          {showTrendSegmentInput && (
-            <div className="flex items-end gap-3 flex-wrap">
-              <div className="flex flex-col gap-1">
-                <label className="text-[10px] text-emerald-400 font-semibold uppercase tracking-wider">Start Date</label>
-                <input
-                  type="text"
-                  value={trendSegDraft.startDate}
-                  onChange={(e) => setTrendSegDraft((d) => ({ ...d, startDate: e.target.value }))}
-                  placeholder="e.g. 2024-01-01"
-                  className="w-36 bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-sm text-white placeholder-gray-600 outline-none focus:border-emerald-400/50 transition-colors"
-                />
-              </div>
-              <div className="flex flex-col gap-1">
-                <label className="text-[10px] text-emerald-400 font-semibold uppercase tracking-wider">End Date</label>
-                <input
-                  type="text"
-                  value={trendSegDraft.endDate}
-                  onChange={(e) => setTrendSegDraft((d) => ({ ...d, endDate: e.target.value }))}
-                  placeholder="e.g. 2024-06-30"
-                  className="w-36 bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-sm text-white placeholder-gray-600 outline-none focus:border-emerald-400/50 transition-colors"
-                />
-              </div>
-              <button
-                onClick={() => {
-                  if (trendSegDraft.startDate && trendSegDraft.endDate) {
-                    const next = [...trendControlSegments, { startDate: trendSegDraft.startDate, endDate: trendSegDraft.endDate }];
-                    setTrendControlSegments(next);
-                    onTrendControlSegmentsChange?.(next);
-                    setTrendSegDraft({ startDate: "", endDate: "" });
-                    setShowTrendSegmentInput(false);
-                  }
-                }}
-                className="px-4 py-2 rounded-lg text-sm font-semibold bg-emerald-600/80 hover:bg-emerald-600 text-white border border-emerald-500/50 transition-colors"
-              >
-                Add
-              </button>
-            </div>
-          )}
-
-          {trendLimits && trendLimits.regressions.length > 0 && (
-            <div className="flex flex-wrap gap-3 pt-1 text-[11px]">
-              {trendLimits.regressions.map((reg, idx) => (
-                <span key={idx} className="text-emerald-400/70">
-                  Segment {idx + 1}: slope = {reg.slope >= 0 ? "+" : ""}{reg.slope.toFixed(4)}, σ = {reg.sigma.toFixed(3)}
-                </span>
-              ))}
             </div>
           )}
         </div>
@@ -2227,14 +2075,17 @@ export default function SpcChart({
               const totalSignals = sigInfo.runCount + sigInfo.trendCount;
               const openingSplitIdx = i > 0 ? filteredSplitIndices[i - 1] : null;
               const isRunSplit = openingSplitIdx !== null && splitModes[openingSplitIdx] === "run";
+              const isTrendSplit = openingSplitIdx !== null && splitModes[openingSplitIdx] === "trend";
 
-              // Trend slope for this segment
-              const slope = showTrendLine ? (trendTraces.slopes[i] ?? 0) : null;
+              // Trend slope for this segment (from trend line overlay OR diagonal split)
+              const trendSlope = seg.trendLine
+                ? seg.trendLine.slope
+                : showTrendLine ? (trendTraces.slopes[i] ?? null) : null;
               const trendLabel =
-                slope !== null
-                  ? slope > 0.1
+                trendSlope !== null
+                  ? trendSlope > 0.1
                     ? `↑ Upward trend`
-                    : slope < -0.1
+                    : trendSlope < -0.1
                     ? `↓ Downward trend`
                     : `→ Stable`
                   : null;
@@ -2243,7 +2094,7 @@ export default function SpcChart({
                 <div
                   key={i}
                   className={`bg-white/[0.03] border rounded-xl p-4 space-y-3 transition-colors ${
-                    isRunSplit ? "border-purple-500/30" : "border-white/8"
+                    isRunSplit ? "border-purple-500/30" : isTrendSplit ? "border-emerald-500/30" : "border-white/8"
                   }`}
                 >
                   <div className="flex items-start justify-between gap-2">
@@ -2255,6 +2106,11 @@ export default function SpcChart({
                         {isRunSplit && (
                           <span className="text-[9px] font-bold bg-purple-500/20 text-purple-300 border border-purple-500/30 px-1.5 py-0.5 rounded uppercase tracking-wider">
                             Run Split
+                          </span>
+                        )}
+                        {isTrendSplit && (
+                          <span className="text-[9px] font-bold bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 px-1.5 py-0.5 rounded uppercase tracking-wider">
+                            Trend Limits
                           </span>
                         )}
                       </div>
@@ -2276,17 +2132,30 @@ export default function SpcChart({
 
                     <div className="flex flex-col items-end gap-1.5 shrink-0">
                       {!readOnly && openingSplitIdx !== null && (
-                        <button
-                          onClick={() => toggleRunSplit(openingSplitIdx)}
-                          title={isRunSplit ? "Disable Run Split (restore UCL/LCL)" : "Enable Run Split (hide UCL/LCL for transition period)"}
-                          className={`text-[10px] font-semibold px-2 py-1 rounded-md border transition-colors ${
-                            isRunSplit
-                              ? "bg-purple-500/20 border-purple-500/40 text-purple-300 hover:bg-purple-500/30"
-                              : "border-white/10 text-gray-600 hover:text-purple-400 hover:border-purple-500/30 bg-white/3"
-                          }`}
-                        >
-                          {isRunSplit ? "↺ Restore limits" : "Run split"}
-                        </button>
+                        <div className="flex gap-1">
+                          <button
+                            onClick={() => cycleSplitMode(openingSplitIdx, "trend")}
+                            title={isTrendSplit ? "Disable Trend Limits" : "Enable Trend Limits (diagonal control limits)"}
+                            className={`text-[10px] font-semibold px-2 py-1 rounded-md border transition-colors ${
+                              isTrendSplit
+                                ? "bg-emerald-500/20 border-emerald-500/40 text-emerald-300 hover:bg-emerald-500/30"
+                                : "border-white/10 text-gray-600 hover:text-emerald-400 hover:border-emerald-500/30 bg-white/3"
+                            }`}
+                          >
+                            {isTrendSplit ? "↺ Horizontal" : "📈 Trend"}
+                          </button>
+                          <button
+                            onClick={() => cycleSplitMode(openingSplitIdx, "run")}
+                            title={isRunSplit ? "Disable Run Split" : "Enable Run Split (hide UCL/LCL)"}
+                            className={`text-[10px] font-semibold px-2 py-1 rounded-md border transition-colors ${
+                              isRunSplit
+                                ? "bg-purple-500/20 border-purple-500/40 text-purple-300 hover:bg-purple-500/30"
+                                : "border-white/10 text-gray-600 hover:text-purple-400 hover:border-purple-500/30 bg-white/3"
+                            }`}
+                          >
+                            {isRunSplit ? "↺ Restore" : "Run split"}
+                          </button>
+                        </div>
                       )}
 
                       {!readOnly && i < spc.segments.length - 1 && splitAfter !== undefined && onAddSplit && (
@@ -2302,56 +2171,99 @@ export default function SpcChart({
                   </div>
 
                   <div className="grid grid-cols-2 gap-x-4 gap-y-2">
-                    <div>
-                      <div className="text-[10px] text-gray-600 mb-0.5">{centreLabel}</div>
-                      <div className="text-sm font-semibold text-indigo-400">
-                        {seg.mean.toFixed(2)}{unit ? ` ${unit}` : ""}
-                      </div>
-                    </div>
-                    <div>
-                      <div className="text-[10px] text-gray-600 mb-0.5">R̄ Avg Range</div>
-                      <div className="text-sm font-semibold text-gray-300">
-                        {seg.avgMovingRange.toFixed(2)}
-                      </div>
-                    </div>
-                    {!isRunSplit && (
+                    {seg.trendLine ? (
                       <>
                         <div>
-                          <div className="text-[10px] text-gray-600 mb-0.5">UCL</div>
-                          <div className="text-sm font-semibold text-red-400">{seg.ucl.toFixed(2)}</div>
+                          <div className="text-[10px] text-gray-600 mb-0.5">Trend Slope</div>
+                          <div className="text-sm font-semibold text-emerald-400">
+                            {seg.trendLine.slope >= 0 ? "+" : ""}{seg.trendLine.slope.toFixed(4)} / pt
+                          </div>
                         </div>
                         <div>
-                          <div className="text-[10px] text-gray-600 mb-0.5">LCL</div>
-                          <div className="text-sm font-semibold text-red-400">{seg.lcl.toFixed(2)}</div>
+                          <div className="text-[10px] text-gray-600 mb-0.5">σ (sigma)</div>
+                          <div className="text-sm font-semibold text-gray-300">
+                            {seg.trendLine.sigma.toFixed(3)}
+                          </div>
+                        </div>
+                        <div>
+                          <div className="text-[10px] text-gray-600 mb-0.5">UCL range</div>
+                          <div className="text-sm font-semibold text-red-400">
+                            {seg.trendLine.ucl[0].toFixed(1)} → {seg.trendLine.ucl[seg.trendLine.ucl.length - 1].toFixed(1)}
+                          </div>
+                        </div>
+                        <div>
+                          <div className="text-[10px] text-gray-600 mb-0.5">LCL range</div>
+                          <div className="text-sm font-semibold text-red-400">
+                            {seg.trendLine.lcl[0].toFixed(1)} → {seg.trendLine.lcl[seg.trendLine.lcl.length - 1].toFixed(1)}
+                          </div>
+                        </div>
+                        <div>
+                          <div className="text-[10px] text-gray-600 mb-0.5">Centre range</div>
+                          <div className="text-sm font-semibold text-emerald-400">
+                            {seg.trendLine.centre[0].toFixed(1)} → {seg.trendLine.centre[seg.trendLine.centre.length - 1].toFixed(1)}
+                          </div>
+                        </div>
+                        <div>
+                          <div className="text-[10px] text-gray-600 mb-0.5">R̄ Avg Range</div>
+                          <div className="text-sm font-semibold text-gray-300">
+                            {seg.avgMovingRange.toFixed(2)}
+                          </div>
                         </div>
                       </>
-                    )}
-                    {isRunSplit && (
-                      <div className="col-span-2">
-                        <div className="text-[10px] text-purple-400/70 italic">
-                          UCL/LCL hidden — transition period
+                    ) : (
+                      <>
+                        <div>
+                          <div className="text-[10px] text-gray-600 mb-0.5">{centreLabel}</div>
+                          <div className="text-sm font-semibold text-indigo-400">
+                            {seg.mean.toFixed(2)}{unit ? ` ${unit}` : ""}
+                          </div>
                         </div>
-                      </div>
+                        <div>
+                          <div className="text-[10px] text-gray-600 mb-0.5">R̄ Avg Range</div>
+                          <div className="text-sm font-semibold text-gray-300">
+                            {seg.avgMovingRange.toFixed(2)}
+                          </div>
+                        </div>
+                        {!isRunSplit && (
+                          <>
+                            <div>
+                              <div className="text-[10px] text-gray-600 mb-0.5">UCL</div>
+                              <div className="text-sm font-semibold text-red-400">{seg.ucl.toFixed(2)}</div>
+                            </div>
+                            <div>
+                              <div className="text-[10px] text-gray-600 mb-0.5">LCL</div>
+                              <div className="text-sm font-semibold text-red-400">{seg.lcl.toFixed(2)}</div>
+                            </div>
+                          </>
+                        )}
+                        {isRunSplit && (
+                          <div className="col-span-2">
+                            <div className="text-[10px] text-purple-400/70 italic">
+                              UCL/LCL hidden — transition period
+                            </div>
+                          </div>
+                        )}
+                      </>
                     )}
                   </div>
 
-                  {/* Feature 3: Trend info */}
-                  {slope !== null && trendLabel && (
+                  {/* Trend info (from trend overlay or diagonal limits) */}
+                  {trendSlope !== null && trendLabel && !seg.trendLine && (
                     <div className="pt-2 border-t border-white/5">
                       <div className="flex items-center justify-between">
                         <span className={`text-[11px] font-medium ${
-                          slope > 0.1 ? "text-amber-400" : slope < -0.1 ? "text-blue-400" : "text-green-400"
+                          trendSlope > 0.1 ? "text-amber-400" : trendSlope < -0.1 ? "text-blue-400" : "text-green-400"
                         }`}>
                           {trendLabel}
                         </span>
                         <span className="text-[10px] text-gray-600 font-mono">
-                          {slope >= 0 ? "+" : ""}{slope.toFixed(3)} / period
+                          {trendSlope >= 0 ? "+" : ""}{trendSlope.toFixed(3)} / period
                         </span>
                       </div>
                     </div>
                   )}
 
-                  <div className={`pt-2 border-t border-white/5 ${slope !== null ? "!pt-0 !border-t-0" : ""}`}>
+                  <div className={`pt-2 border-t border-white/5 ${trendSlope !== null ? "!pt-0 !border-t-0" : ""}`}>
                     {totalSignals === 0 ? (
                       <span className="text-[11px] text-green-400/70">✓ No signals detected</span>
                     ) : (

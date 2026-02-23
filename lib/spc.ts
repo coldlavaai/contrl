@@ -25,6 +25,20 @@ export interface SpcSegment {
   lcl: number;
   avgMovingRange: number; // R̄
   runSplitMode?: boolean; // if true, only centre line is shown (no UCL/LCL)
+  /** Trend control limit data — when set, this segment uses diagonal limits */
+  trendLine?: {
+    slope: number;
+    intercept: number;
+    sigma: number;       // 1σ distance
+    /** Per-index fitted values and limits (startIndex-relative) */
+    centre: number[];    // fitted values
+    ucl: number[];       // fitted + 3σ
+    lcl: number[];       // fitted - 3σ
+    sigma1Upper: number[];
+    sigma1Lower: number[];
+    sigma2Upper: number[];
+    sigma2Lower: number[];
+  };
 }
 
 export interface SpcResult {
@@ -185,6 +199,8 @@ export interface NelsonRuleConfig {
   rule4?: boolean;
   /** Rule 5: 2 out of 3 consecutive beyond 2σ (same side) */
   rule5?: boolean;
+  /** Rule 5b: 3+ successive points in 2σ-3σ band on same side (Jim's cluster rule) */
+  rule5b?: boolean;
   /** Rule 6: 4 out of 5 consecutive beyond 1σ (same side) */
   rule6?: boolean;
   /** Rule 7: 15 consecutive points within 1σ (either side) — "hugging" */
@@ -202,6 +218,7 @@ export const NELSON_RULE_NAMES: Record<number, string> = {
   6: "4 of 5 beyond 1σ",
   7: "15 within 1σ (hugging)",
   8: "8 beyond 1σ (stratification)",
+  9: "3+ successive in 2σ-3σ",
 };
 
 export const DEFAULT_NELSON_RULES: NelsonRuleConfig = {
@@ -212,6 +229,7 @@ export const DEFAULT_NELSON_RULES: NelsonRuleConfig = {
   rule3Count: 6,
   rule4: false,
   rule5: false,
+  rule5b: false,
   rule6: false,
   rule7: false,
   rule8: false,
@@ -386,6 +404,50 @@ export function detectAllSignals(
     }
   }
 
+  // ── Rule 5b: 3+ successive points in 2σ-3σ band on same side (Jim's cluster rule) ──
+  // A point is "in the 2σ-3σ band" if it's beyond 2σ but not beyond 3σ.
+  if (config.rule5b) {
+    // Upper band: between sigma2Upper and UCL
+    let upperRunCount = 0;
+    let upperRunStart = 0;
+    for (let i = 0; i < n; i++) {
+      const inUpperBand = values[i] > sigma2Upper[i] && values[i] <= segmentUcls[i];
+      if (inUpperBand) {
+        if (upperRunCount === 0) upperRunStart = i;
+        upperRunCount++;
+      } else {
+        upperRunCount = 0;
+      }
+      if (upperRunCount >= 3) {
+        for (let j = upperRunStart; j <= i; j++) {
+          if (!signals[j].some((s) => s.rule === 9)) {
+            signals[j].push({ rule: 9, name: NELSON_RULE_NAMES[9] });
+          }
+        }
+      }
+    }
+
+    // Lower band: between LCL and sigma2Lower
+    let lowerRunCount = 0;
+    let lowerRunStart = 0;
+    for (let i = 0; i < n; i++) {
+      const inLowerBand = values[i] < sigma2Lower[i] && values[i] >= segmentLcls[i];
+      if (inLowerBand) {
+        if (lowerRunCount === 0) lowerRunStart = i;
+        lowerRunCount++;
+      } else {
+        lowerRunCount = 0;
+      }
+      if (lowerRunCount >= 3) {
+        for (let j = lowerRunStart; j <= i; j++) {
+          if (!signals[j].some((s) => s.rule === 9)) {
+            signals[j].push({ rule: 9, name: NELSON_RULE_NAMES[9] });
+          }
+        }
+      }
+    }
+  }
+
   // ── Rule 6: 4 out of 5 consecutive points beyond 1σ (same side) ──
   if (config.rule6) {
     for (let i = 4; i < n; i++) {
@@ -469,8 +531,8 @@ export function detectAllSignals(
 export interface SpcOptions {
   /** Calculation method: mean (default) or median */
   method?: "mean" | "median";
-  /** Map of split index → 'run' to flag Run Split segments (only centre line shown) */
-  splitModes?: Record<number, "run">;
+  /** Map of split index → mode: 'run' (no UCL/LCL) or 'trend' (diagonal limits) */
+  splitModes?: Record<number, "run" | "trend">;
   /** When true, the last segment inherits UCL/LCL from the previous segment */
   frozenLimits?: boolean;
   /** Indices to omit from UCL/LCL/mean calculations (shown hollow on chart) */
@@ -810,12 +872,12 @@ export function calculateSpc(
       .map((idx) => originalToFiltered[idx]);
 
     // Adjust split modes: map keys to filtered space
-    const filteredSplitModes: Record<number, "run"> = {};
+    const filteredSplitModes: Record<number, "run" | "trend"> = {};
     for (const [origIdxStr, mode] of Object.entries(splitModes)) {
       const origIdx = Number(origIdxStr);
       const filtIdx = originalToFiltered[origIdx];
       if (filtIdx !== -1) {
-        filteredSplitModes[filtIdx] = mode as "run";
+        filteredSplitModes[filtIdx] = mode as "run" | "trend";
       }
     }
 
@@ -915,11 +977,67 @@ export function calculateSpc(
 
     const seg = calculateSegment(slice, start, method, frozenStats, allowNegativeLcl);
 
-    // Mark run-split segments (segment s was opened by splitIndices[s-1])
+    // Mark run-split or trend-split segments (segment s was opened by splitIndices[s-1])
     if (s > 0) {
       const openingSplit = splitIndices[s - 1];
       if (splitModes[openingSplit] === "run") {
         seg.runSplitMode = true;
+      } else if (splitModes[openingSplit] === "trend") {
+        // Calculate diagonal trend limits for this segment
+        if (slice.length >= 2) {
+          const indices = slice.map((_, j) => start + j);
+          const xMean = indices.reduce((a, b) => a + b, 0) / slice.length;
+          const yMean = slice.reduce((a, b) => a + b, 0) / slice.length;
+          let sxy = 0, sxx = 0;
+          for (let j = 0; j < slice.length; j++) {
+            sxy += (indices[j] - xMean) * (slice[j] - yMean);
+            sxx += (indices[j] - xMean) ** 2;
+          }
+          const slope = sxx === 0 ? 0 : sxy / sxx;
+          const intercept = yMean - slope * xMean;
+
+          // Calculate sigma from residuals' moving range (XmR consistency)
+          const residuals = slice.map((v, j) => v - (slope * (start + j) + intercept));
+          let mrTotal = 0;
+          for (let j = 1; j < residuals.length; j++) {
+            mrTotal += Math.abs(residuals[j] - residuals[j - 1]);
+          }
+          const mrBar = residuals.length > 1 ? mrTotal / (residuals.length - 1) : 0;
+          const sigma3 = mrBar * XMR_CONSTANT; // 3σ
+          const sigma1 = sigma3 / 3;
+
+          const centre: number[] = [];
+          const trendUcl: number[] = [];
+          const trendLcl: number[] = [];
+          const s1U: number[] = [];
+          const s1L: number[] = [];
+          const s2U: number[] = [];
+          const s2L: number[] = [];
+
+          for (let j = 0; j < slice.length; j++) {
+            const fitted = slope * (start + j) + intercept;
+            centre.push(fitted);
+            trendUcl.push(fitted + sigma3);
+            trendLcl.push(allowNegativeLcl ? fitted - sigma3 : Math.max(0, fitted - sigma3));
+            s1U.push(fitted + sigma1);
+            s1L.push(fitted - sigma1);
+            s2U.push(fitted + 2 * sigma1);
+            s2L.push(fitted - 2 * sigma1);
+          }
+
+          seg.trendLine = {
+            slope,
+            intercept,
+            sigma: sigma1,
+            centre,
+            ucl: trendUcl,
+            lcl: trendLcl,
+            sigma1Upper: s1U,
+            sigma1Lower: s1L,
+            sigma2Upper: s2U,
+            sigma2Lower: s2L,
+          };
+        }
       }
     }
 
@@ -930,7 +1048,12 @@ export function calculateSpc(
   const segmentMeans = new Array(values.length).fill(0);
   for (const seg of segments) {
     for (let i = seg.startIndex; i <= seg.endIndex; i++) {
-      segmentMeans[i] = seg.mean;
+      // For trend segments, the "mean" at each point is the trend fitted value
+      if (seg.trendLine) {
+        segmentMeans[i] = seg.trendLine.centre[i - seg.startIndex];
+      } else {
+        segmentMeans[i] = seg.mean;
+      }
     }
   }
 
@@ -947,12 +1070,22 @@ export function calculateSpc(
 
   for (const seg of segments) {
     for (let i = seg.startIndex; i <= seg.endIndex; i++) {
-      meanLine[i] = seg.mean;
-      segmentUcls[i] = seg.ucl;
-      segmentLcls[i] = seg.lcl;
-      if (!seg.runSplitMode) {
-        uclLine[i] = seg.ucl;
-        lclLine[i] = seg.lcl;
+      if (seg.trendLine) {
+        // Trend segments: per-point diagonal limits
+        const j = i - seg.startIndex;
+        meanLine[i] = seg.trendLine.centre[j];
+        segmentUcls[i] = seg.trendLine.ucl[j];
+        segmentLcls[i] = seg.trendLine.lcl[j];
+        uclLine[i] = seg.trendLine.ucl[j];
+        lclLine[i] = seg.trendLine.lcl[j];
+      } else {
+        meanLine[i] = seg.mean;
+        segmentUcls[i] = seg.ucl;
+        segmentLcls[i] = seg.lcl;
+        if (!seg.runSplitMode) {
+          uclLine[i] = seg.ucl;
+          lclLine[i] = seg.lcl;
+        }
       }
     }
   }
@@ -980,7 +1113,7 @@ export function calculateSpc(
     // Backward compat: map Nelson rules to legacy signal types
     let legacySignal: "none" | "run" | "trend" = signals[i];
     if (details.length > 0 && legacySignal === "none") {
-      if (details.some((d) => d.rule === 1 || d.rule === 2 || d.rule === 5 || d.rule === 6 || d.rule === 8)) {
+      if (details.some((d) => d.rule === 1 || d.rule === 2 || d.rule === 5 || d.rule === 6 || d.rule === 8 || d.rule === 9)) {
         legacySignal = "run";
       } else if (details.some((d) => d.rule === 3 || d.rule === 4)) {
         legacySignal = "trend";
