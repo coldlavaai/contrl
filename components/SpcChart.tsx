@@ -827,7 +827,12 @@ export default function SpcChart({
       name: "Run Signal",
       x: runPoints.map((p) => p.date),
       y: runPoints.map((p) => p.value),
-      marker: { ...commonMarker, color: "#ef4444", size: 10 },
+      marker: {
+        size: 14,
+        color: "#ef4444",
+        symbol: "circle",
+        line: { width: 3, color: "#fca5a5" },
+      },
       text: runPoints.map((p) => {
         const rules = p.signalDetails?.map((d) => `R${d.rule}: ${d.name}`).join("<br>") ?? "Run signal";
         return `<b>${p.date}</b><br>Value: ${p.value.toFixed(1)} ${unit}<br><span style="color:#ef4444">⚠ ${rules}</span>`;
@@ -840,7 +845,12 @@ export default function SpcChart({
       name: "Trend Signal",
       x: trendPoints.map((p) => p.date),
       y: trendPoints.map((p) => p.value),
-      marker: { ...commonMarker, color: "#f97316", size: 10 },
+      marker: {
+        size: 14,
+        color: "#f97316",
+        symbol: "diamond",
+        line: { width: 3, color: "#fdba74" },
+      },
       text: trendPoints.map((p) => {
         const rules = p.signalDetails?.map((d) => `R${d.rule}: ${d.name}`).join("<br>") ?? "Trend signal";
         return `<b>${p.date}</b><br>Value: ${p.value.toFixed(1)} ${unit}<br><span style="color:#f97316">⚠ ${rules}</span>`;
