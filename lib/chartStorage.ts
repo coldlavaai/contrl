@@ -20,6 +20,8 @@ export interface ChartColors {
   uclLine?: string;
   lclLine?: string;
   dataPoints?: string;
+  sigma1Line?: string;
+  sigma2Line?: string;
 }
 
 export interface SavedChart {
@@ -57,6 +59,15 @@ export interface SavedChart {
     subgroups: number[][];
     labels: string[];
   };
+  // Zone lines (1σ, 2σ) visibility
+  showZoneLines?: boolean;
+  // Trend control limits (diagonal limits)
+  trendControlLimits?: boolean;
+  trendControlSegments?: Array<{ startDate: string; endDate: string }>;
+  // LCL below zero handling
+  allowNegativeLcl?: boolean;
+  // Chart title / axis labels (feature 5)
+  chartTitle?: string;
 }
 
 const STORAGE_KEY = "contrl_charts";

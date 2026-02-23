@@ -216,6 +216,8 @@ export default function SettingsPage() {
             <ColorPicker label="UCL (Upper Control Limit)" description="Color for upper control limit lines" value={colors.uclLine} onChange={(v) => handleColorChange("uclLine", v)} />
             <ColorPicker label="LCL (Lower Control Limit)" description="Color for lower control limit lines" value={colors.lclLine} onChange={(v) => handleColorChange("lclLine", v)} />
             <ColorPicker label="Data Points & Lines" description="Color for data points and connecting lines" value={colors.dataPoints} onChange={(v) => handleColorChange("dataPoints", v)} />
+            <ColorPicker label="±1σ Zone Line" description="Color for ±1σ zone lines (faint)" value={colors.sigma1Line} onChange={(v) => handleColorChange("sigma1Line", v)} />
+            <ColorPicker label="±2σ Zone Line" description="Color for ±2σ zone lines" value={colors.sigma2Line} onChange={(v) => handleColorChange("sigma2Line", v)} />
 
             <div className="pt-3 border-t border-white/5">
               <button onClick={handleResetColors} className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium bg-white/5 border border-white/10 text-gray-400 hover:bg-white/8 hover:text-gray-200 hover:border-white/20 transition-all">

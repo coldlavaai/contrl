@@ -10,6 +10,8 @@ export interface ChartColors {
   uclLine?: string;
   lclLine?: string;
   dataPoints?: string;
+  sigma1Line?: string;
+  sigma2Line?: string;
 }
 
 export type ColorKey = keyof ChartColors;
@@ -26,6 +28,8 @@ export function usePerChartColors(initialCustomColors?: ChartColors) {
     uclLine: customColors.uclLine ?? globalColors.uclLine,
     lclLine: customColors.lclLine ?? globalColors.lclLine,
     dataPoints: customColors.dataPoints ?? globalColors.dataPoints,
+    sigma1Line: customColors.sigma1Line ?? globalColors.sigma1Line,
+    sigma2Line: customColors.sigma2Line ?? globalColors.sigma2Line,
   };
 
   const updateColor = useCallback((key: ColorKey, value: string) => {

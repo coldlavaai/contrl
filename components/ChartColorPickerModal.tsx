@@ -19,6 +19,8 @@ const COLOR_LABELS: Record<ColorKey, string> = {
   uclLine: "UCL",
   lclLine: "LCL",
   dataPoints: "Data Points",
+  sigma1Line: "±1σ Zone Line",
+  sigma2Line: "±2σ Zone Line",
 };
 
 export function ChartColorPickerModal({

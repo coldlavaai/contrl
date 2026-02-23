@@ -7,6 +7,8 @@ export interface ChartColors {
   uclLine: string;
   lclLine: string;
   dataPoints: string;
+  sigma1Line: string;
+  sigma2Line: string;
 }
 
 export const DEFAULT_COLORS: ChartColors = {
@@ -16,6 +18,8 @@ export const DEFAULT_COLORS: ChartColors = {
   uclLine: "#ef4444", // Red
   lclLine: "#ef4444", // Red
   dataPoints: "#a5b4fc", // Light indigo
+  sigma1Line: "#4b5563", // Gray-600 (faint)
+  sigma2Line: "#6b7280", // Gray-500 (slightly brighter)
 };
 
 const STORAGE_KEY = "contrl_chart_colors";

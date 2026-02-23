@@ -76,7 +76,8 @@ function calculateSegment(
   values: number[],
   startIndex: number,
   method: "mean" | "median" = "mean",
-  frozenStats?: { ucl: number; lcl: number }
+  frozenStats?: { ucl: number; lcl: number },
+  allowNegativeLcl?: boolean,
 ): SpcSegment {
   const rBar = avgMovingRange(values);
   let center: number;
@@ -89,12 +90,12 @@ function calculateSegment(
     const medMR = mrs.length > 0 ? median(mrs) : 0;
     const spread = medMR * MEDIAN_CONSTANT;
     ucl = frozenStats ? frozenStats.ucl : center + spread;
-    lcl = frozenStats ? frozenStats.lcl : Math.max(0, center - spread);
+    lcl = frozenStats ? frozenStats.lcl : (allowNegativeLcl ? center - spread : Math.max(0, center - spread));
   } else {
     center = mean(values);
     const spread = rBar * XMR_CONSTANT;
     ucl = frozenStats ? frozenStats.ucl : center + spread;
-    lcl = frozenStats ? frozenStats.lcl : Math.max(0, center - spread);
+    lcl = frozenStats ? frozenStats.lcl : (allowNegativeLcl ? center - spread : Math.max(0, center - spread));
   }
 
   return {
@@ -476,6 +477,8 @@ export interface SpcOptions {
   omittedIndices?: number[];
   /** Nelson/Western Electric rule configuration */
   nelsonRules?: NelsonRuleConfig;
+  /** When true, LCL is not floored at 0 (for financial metrics, etc.) */
+  allowNegativeLcl?: boolean;
 }
 
 /**
@@ -647,13 +650,129 @@ export function testNormality(values: number[], alpha = 0.05): NormalityResult {
   };
 }
 
+// ── Trend Control Limits ─────────────────────────────────────────────────────
+
+export interface TrendLimitSegment {
+  startDate: string;
+  endDate: string;
+}
+
+export interface TrendLimitResult {
+  /** Per-point trend centre line value (replaces flat mean) */
+  trendCentre: (number | null)[];
+  /** Per-point trend UCL (3σ above trend) */
+  trendUcl: (number | null)[];
+  /** Per-point trend LCL (3σ below trend) */
+  trendLcl: (number | null)[];
+  /** Per-point ±1σ from trend */
+  trend1Upper: (number | null)[];
+  trend1Lower: (number | null)[];
+  /** Per-point ±2σ from trend */
+  trend2Upper: (number | null)[];
+  trend2Lower: (number | null)[];
+  /** Slope and intercept of each trend segment */
+  regressions: Array<{ slope: number; intercept: number; sigma: number; startIdx: number; endIdx: number }>;
+}
+
+/**
+ * Calculate trend (diagonal) control limits via linear regression.
+ * Uses residuals from the trend line to calculate sigma,
+ * then draws limits parallel to the trend at ±1σ, ±2σ, ±3σ.
+ */
+export function calculateTrendLimits(
+  values: number[],
+  dates: string[],
+  segments?: TrendLimitSegment[],
+): TrendLimitResult {
+  const n = values.length;
+  const trendCentre: (number | null)[] = new Array(n).fill(null);
+  const trendUcl: (number | null)[] = new Array(n).fill(null);
+  const trendLcl: (number | null)[] = new Array(n).fill(null);
+  const trend1Upper: (number | null)[] = new Array(n).fill(null);
+  const trend1Lower: (number | null)[] = new Array(n).fill(null);
+  const trend2Upper: (number | null)[] = new Array(n).fill(null);
+  const trend2Lower: (number | null)[] = new Array(n).fill(null);
+  const regressions: TrendLimitResult["regressions"] = [];
+
+  // Determine which index ranges to apply trend limits to
+  const ranges: Array<{ startIdx: number; endIdx: number }> = [];
+
+  if (segments && segments.length > 0) {
+    for (const seg of segments) {
+      let startIdx = -1;
+      let endIdx = -1;
+      for (let i = 0; i < n; i++) {
+        if (dates[i] >= seg.startDate && startIdx === -1) startIdx = i;
+        if (dates[i] <= seg.endDate) endIdx = i;
+      }
+      if (startIdx !== -1 && endIdx !== -1 && endIdx >= startIdx) {
+        ranges.push({ startIdx, endIdx });
+      }
+    }
+  } else {
+    // Apply to entire dataset
+    ranges.push({ startIdx: 0, endIdx: n - 1 });
+  }
+
+  for (const range of ranges) {
+    const { startIdx, endIdx } = range;
+    const len = endIdx - startIdx + 1;
+    if (len < 2) continue;
+
+    // Linear regression on the range
+    const indices: number[] = [];
+    const vals: number[] = [];
+    for (let i = startIdx; i <= endIdx; i++) {
+      indices.push(i);
+      vals.push(values[i]);
+    }
+
+    const xMean = indices.reduce((a, b) => a + b, 0) / len;
+    const yMean = vals.reduce((a, b) => a + b, 0) / len;
+    let sxy = 0, sxx = 0;
+    for (let j = 0; j < len; j++) {
+      sxy += (indices[j] - xMean) * (vals[j] - yMean);
+      sxx += (indices[j] - xMean) ** 2;
+    }
+    const slope = sxx === 0 ? 0 : sxy / sxx;
+    const intercept = yMean - slope * xMean;
+
+    // Sigma from residuals (using average moving range of residuals for XmR consistency)
+    const residuals = vals.map((v, j) => v - (slope * indices[j] + intercept));
+    let mrTotal = 0;
+    for (let j = 1; j < residuals.length; j++) {
+      mrTotal += Math.abs(residuals[j] - residuals[j - 1]);
+    }
+    const mrBar = residuals.length > 1 ? mrTotal / (residuals.length - 1) : 0;
+    const sigma = mrBar * XMR_CONSTANT / 3; // σ̂ = R̄ / d2, and XMR_CONSTANT = 3/d2, so σ̂ = R̄ × (XMR_CONSTANT/3) is wrong
+    // Actually: UCL = X̄ + R̄ × 2.66, so 3σ = R̄ × 2.66, thus σ = R̄ × 2.66 / 3
+    const sigma3 = mrBar * XMR_CONSTANT; // This is 3σ
+    const sigma1 = sigma3 / 3;
+
+    regressions.push({ slope, intercept, sigma: sigma1, startIdx, endIdx });
+
+    for (let i = startIdx; i <= endIdx; i++) {
+      const fitted = slope * i + intercept;
+      trendCentre[i] = fitted;
+      trendUcl[i] = fitted + sigma3;
+      trendLcl[i] = fitted - sigma3;
+      trend1Upper[i] = fitted + sigma1;
+      trend1Lower[i] = fitted - sigma1;
+      trend2Upper[i] = fitted + 2 * sigma1;
+      trend2Lower[i] = fitted - 2 * sigma1;
+    }
+  }
+
+  return { trendCentre, trendUcl, trendLcl, trend1Upper, trend1Lower, trend2Upper, trend2Lower, regressions };
+}
+
 export function calculateSpc(
   values: number[],
   dates: string[],
   splitIndices: number[] = [],
   options: SpcOptions = {}
 ): SpcResult {
-  const { method = "mean", splitModes = {}, frozenLimits = false, omittedIndices = [], nelsonRules } = options;
+  const { method = "mean", splitModes = {}, frozenLimits = false, omittedIndices = [], nelsonRules, allowNegativeLcl = false } = options;
 
   if (values.length === 0) {
     return {
@@ -705,6 +824,7 @@ export function calculateSpc(
       method,
       splitModes: filteredSplitModes,
       frozenLimits,
+      allowNegativeLcl,
     });
 
     // Map points back to original space
@@ -793,7 +913,7 @@ export function calculateSpc(
           }
         : undefined;
 
-    const seg = calculateSegment(slice, start, method, frozenStats);
+    const seg = calculateSegment(slice, start, method, frozenStats, allowNegativeLcl);
 
     // Mark run-split segments (segment s was opened by splitIndices[s-1])
     if (s > 0) {
