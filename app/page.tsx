@@ -58,9 +58,9 @@ export default function LandingPage() {
           {/* Stat strip */}
           <div className="mt-16 grid grid-cols-3 gap-8 sm:gap-16 border-t border-white/5 pt-12">
             {[
-              { value: "52 weeks", label: "of data in seconds" },
-              { value: "3 signals", label: "automatically detected" },
-              { value: "Zero setup", label: "no databases, no code" },
+              { value: "8 rules", label: "Nelson/Western Electric" },
+              { value: "7 chart types", label: "XmR, X̄-R, X̄-S, EWMA & more" },
+              { value: "Zero setup", label: "upload data, start charting" },
             ].map((s) => (
               <div key={s.label} className="text-center">
                 <div className="text-2xl sm:text-3xl font-bold text-white">{s.value}</div>
