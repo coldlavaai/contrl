@@ -113,7 +113,7 @@ export async function PUT(
     if (body.chartType !== undefined) updateData.chart_type = body.chartType;
     if (body.xAxisLabel !== undefined) updateData.x_axis_label = body.xAxisLabel;
     if (body.yAxisLabel !== undefined) updateData.y_axis_label = body.yAxisLabel;
-    if (body.customColors !== undefined) updateData.custom_colors = body.customColors;
+    // if (body.customColors !== undefined) updateData.custom_colors = body.customColors; // column not yet in Supabase
     if (body.lsl !== undefined) updateData.lsl = body.lsl;
     if (body.usl !== undefined) updateData.usl = body.usl;
     updateData.updated_at = new Date().toISOString();

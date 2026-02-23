@@ -126,7 +126,7 @@ export async function POST(request: NextRequest) {
       chart_type: body.chartType ?? "xmr",
       x_axis_label: body.xAxisLabel ?? null,
       y_axis_label: body.yAxisLabel ?? null,
-      custom_colors: body.customColors ?? null,
+      // custom_colors: body.customColors ?? null, // column not yet in Supabase
       lsl: body.lsl ?? null,
       usl: body.usl ?? null,
     };

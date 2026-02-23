@@ -183,7 +183,7 @@ function chartToRow(chart: SavedChart, userId: string) {
     chart_type: chart.chartType ?? "xmr",
     x_axis_label: chart.xAxisLabel ?? null,
     y_axis_label: chart.yAxisLabel ?? null,
-    custom_colors: chart.customColors ?? null,
+    // custom_colors: chart.customColors ?? null, // column not yet in Supabase
     lsl: chart.lsl ?? null,
     usl: chart.usl ?? null,
   };
@@ -307,7 +307,7 @@ export async function updateChartCloud(
     if (partial.chartType !== undefined) updateData.chart_type = partial.chartType;
     if (partial.xAxisLabel !== undefined) updateData.x_axis_label = partial.xAxisLabel;
     if (partial.yAxisLabel !== undefined) updateData.y_axis_label = partial.yAxisLabel;
-    if (partial.customColors !== undefined) updateData.custom_colors = partial.customColors;
+    // if (partial.customColors !== undefined) updateData.custom_colors = partial.customColors; // column not yet in Supabase
     if (partial.lsl !== undefined) updateData.lsl = partial.lsl;
     if (partial.usl !== undefined) updateData.usl = partial.usl;
     updateData.updated_at = new Date().toISOString();
