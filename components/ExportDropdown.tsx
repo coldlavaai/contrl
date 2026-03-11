@@ -2,18 +2,20 @@
 
 import { useState, useRef, useEffect, useCallback } from "react";
 import { Download, FileText, Image, Printer } from "lucide-react";
-import { downloadChartPdf, downloadChartImage, printChart, ExportStats } from "@/lib/exportUtils";
+import { downloadChartPdf, downloadChartImage, downloadFullChartPng, downloadFullChartPdf, printChart, ExportStats } from "@/lib/exportUtils";
 
 interface ExportDropdownProps {
   /** Ref to the chart container element (must contain a .js-plotly-plot) */
   chartContainerRef: React.RefObject<HTMLElement | null>;
+  /** Ref to the full section container (chart + segment stats) for full exports */
+  fullContainerRef?: React.RefObject<HTMLElement | null>;
   /** Chart title for filenames */
   title: string;
   /** Statistics to include in the PDF */
   stats: ExportStats;
 }
 
-export default function ExportDropdown({ chartContainerRef, title, stats }: ExportDropdownProps) {
+export default function ExportDropdown({ chartContainerRef, fullContainerRef, title, stats }: ExportDropdownProps) {
   const [open, setOpen] = useState(false);
   const [loading, setLoading] = useState<string | null>(null);
   const dropdownRef = useRef<HTMLDivElement>(null);
@@ -41,7 +43,7 @@ export default function ExportDropdown({ chartContainerRef, title, stats }: Expo
   }, [open]);
 
   const handleAction = useCallback(
-    async (action: "pdf" | "png" | "jpeg" | "print") => {
+    async (action: "pdf" | "png" | "jpeg" | "print" | "full-png" | "full-pdf") => {
       if (!chartContainerRef.current) return;
 
       if (action === "print") {
@@ -50,6 +52,26 @@ export default function ExportDropdown({ chartContainerRef, title, stats }: Expo
         return;
       }
 
+      // Full exports (chart + segment stats + branding)
+      if (action === "full-png" || action === "full-pdf") {
+        if (!fullContainerRef?.current) return;
+        setLoading(action);
+        try {
+          if (action === "full-png") {
+            await downloadFullChartPng(fullContainerRef.current, title, false);
+          } else {
+            await downloadFullChartPdf(fullContainerRef.current, title, false);
+          }
+        } catch (err) {
+          console.error(`Export ${action} failed:`, err);
+        } finally {
+          setLoading(null);
+          setOpen(false);
+        }
+        return;
+      }
+
+      // Chart-only exports
       setLoading(action);
       try {
         if (action === "pdf") {
@@ -64,26 +86,42 @@ export default function ExportDropdown({ chartContainerRef, title, stats }: Expo
         setOpen(false);
       }
     },
-    [chartContainerRef, title, stats],
+    [chartContainerRef, fullContainerRef, title, stats],
   );
 
   const menuItems = [
+    ...(fullContainerRef
+      ? [
+          {
+            key: "full-pdf" as const,
+            icon: FileText,
+            label: "Full Export (PDF)",
+            desc: "Chart + segment stats + branding",
+          },
+          {
+            key: "full-png" as const,
+            icon: Image,
+            label: "Full Export (PNG)",
+            desc: "Chart + segment stats + branding",
+          },
+        ]
+      : []),
     {
       key: "pdf" as const,
       icon: FileText,
-      label: "Download PDF",
-      desc: "Full report with statistics",
+      label: "Chart Only (PDF)",
+      desc: "Statistics table below",
     },
     {
       key: "png" as const,
       icon: Image,
-      label: "Download PNG",
+      label: "Chart Only (PNG)",
       desc: "High-res image (2×)",
     },
     {
       key: "jpeg" as const,
       icon: Image,
-      label: "Download JPEG",
+      label: "Chart Only (JPEG)",
       desc: "Compressed image",
     },
     {

@@ -310,6 +310,7 @@ export default function SpcChart({
 
   // ── Chart container ref for export ─────────────────────────────────────────
   const chartContainerRef = useRef<HTMLDivElement>(null);
+  const fullSectionRef = useRef<HTMLDivElement>(null); // For full exports (chart + segment stats)
 
   // ── Chart tabs: Control Chart vs Distribution vs Box Plot ─────────────────
   const [activeTab, setActiveTab] = useState<"control" | "distribution" | "boxplot">("control");
@@ -1615,6 +1616,7 @@ export default function SpcChart({
             />
             <ExportDropdown
               chartContainerRef={chartContainerRef}
+              fullContainerRef={fullSectionRef}
               title={localTitle}
               stats={exportStats}
             />
@@ -1941,7 +1943,7 @@ export default function SpcChart({
 
       {/* ── Tab: Control Chart ── */}
       {activeTab === "control" && (
-        <>
+        <div ref={fullSectionRef}>
           {/* Main Chart */}
           <div
             ref={chartContainerRef}
@@ -2380,7 +2382,7 @@ export default function SpcChart({
               />
             </div>
           )}
-        </>
+        </div>
       )}
 
       {/* ── Tab: Distribution (Histogram) ── */}
