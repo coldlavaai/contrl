@@ -1969,61 +1969,6 @@ export default function SpcChart({
             />
           </div>
 
-          {/* Moving Range Chart */}
-          {showMrChart && (
-            <div className="w-full rounded-xl overflow-hidden border border-white/5">
-              <div className="flex items-center gap-2 px-4 pt-3 pb-0">
-                <span className="text-[11px] font-semibold text-violet-400 uppercase tracking-wider">
-                  Moving Range
-                </span>
-                <span className="text-[10px] text-gray-600">
-                  R̄ = {spc.mrMean.toFixed(3)}
-                  {"  ·  "}
-                  UCL = {spc.mrUcl.toFixed(3)}
-                  {filteredOmittedIndices.length > 0 && (
-                    <span className="ml-2 text-gray-700">
-                      · {filteredOmittedIndices.length} omitted
-                    </span>
-                  )}
-                </span>
-              </div>
-              <Plot
-                data={mrData}
-                layout={mrLayout}
-                config={{
-                  ...config,
-                  toImageButtonOptions: { filename: `${localTitle.replace(/\s+/g, "_")}_MR` },
-                }}
-                style={{ width: "100%", height: "180px" }}
-                useResizeHandler
-              />
-            </div>
-          )}
-        </>
-      )}
-
-      {/* ── Tab: Distribution (Histogram) ── */}
-      {activeTab === "distribution" && (
-        <HistogramChart
-          values={histogramValues}
-          title={localTitle}
-          unit={unit}
-          lsl={lsl}
-          usl={usl}
-        />
-      )}
-
-      {/* ── Tab: Box Plot ── */}
-      {activeTab === "boxplot" && (
-        <BoxPlot
-          values={filteredValues}
-          dates={filteredDates}
-          title={localTitle}
-          unit={unit}
-          splitIndices={filteredSplitIndices}
-        />
-      )}
-
       {/* ── Chart Values Display ── */}
       {activeTab === "control" && (
         <ChartValuesDisplay
@@ -2035,129 +1980,6 @@ export default function SpcChart({
         />
       )}
 
-      {/* ── Color Picker Modal ── */}
-      {colorPickerState && (
-        <ChartColorPickerModal
-          colorKey={colorPickerState.colorKey}
-          currentColor={colors[colorPickerState.colorKey]}
-          label={colorPickerState.label}
-          onColorChange={updateColor}
-          onClose={() => setColorPickerState(null)}
-          position={colorPickerState.position}
-        />
-      )}
-
-      {/* ── Annotation Popover ── */}
-      {popover !== null && (
-        <>
-          <div className="fixed inset-0 z-40" onClick={() => setPopover(null)} />
-          <div
-            className="fixed z-50 bg-[#1c1c2e] border border-amber-500/40 rounded-xl shadow-2xl p-4 w-72"
-            style={{
-              left: Math.min(popover.x, window.innerWidth - 300),
-              top: Math.min(popover.y - 10, window.innerHeight - 160),
-            }}
-            onClick={(e) => e.stopPropagation()}
-          >
-            <div className="text-xs text-amber-400 font-semibold mb-2">
-              {popover.existingText
-                ? `Edit note — ${filteredDates[popover.dateIndex]}`
-                : `Add note — ${filteredDates[popover.dateIndex]}`}
-            </div>
-            <input
-              ref={popoverInputRef}
-              value={popoverDraft}
-              onChange={(e) => setPopoverDraft(e.target.value)}
-              onKeyDown={(e) => { if (e.key === "Enter") commitAnnotation(); if (e.key === "Escape") setPopover(null); }}
-              placeholder={`Note for ${filteredDates[popover.dateIndex]}…`}
-              className="w-full bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-sm text-white placeholder-gray-600 outline-none focus:border-amber-400/50 transition-colors"
-            />
-            <div className="flex items-center gap-2 mt-3">
-              <button
-                onClick={commitAnnotation}
-                className="flex-1 py-1.5 rounded-lg text-xs font-semibold bg-amber-600/80 hover:bg-amber-600 text-white border border-amber-500/50 transition-colors"
-              >
-                Save
-              </button>
-              <button
-                onClick={() => setPopover(null)}
-                className="flex-1 py-1.5 rounded-lg text-xs font-semibold bg-white/5 hover:bg-white/10 text-gray-400 border border-white/10 transition-colors"
-              >
-                Cancel
-              </button>
-              {popover.existingText && (
-                <button
-                  onClick={deleteAnnotation}
-                  title="Delete this note"
-                  className="py-1.5 px-2.5 rounded-lg text-xs text-red-400 border border-red-500/20 hover:border-red-500/40 bg-red-950/20 transition-colors"
-                >
-                  Delete
-                </button>
-              )}
-            </div>
-          </div>
-        </>
-      )}
-
-      {/* ── Segment Label Editing Popover ── */}
-      {editingSegmentLabel !== null && (
-        <>
-          <div className="fixed inset-0 z-40" onClick={() => setEditingSegmentLabel(null)} />
-          <div
-            className="fixed z-50 bg-[#1c1c2e] border border-cyan-500/40 rounded-xl shadow-2xl p-4 w-80"
-            style={{
-              left: "50%",
-              top: "50%",
-              transform: "translate(-50%, -50%)",
-            }}
-            onClick={(e) => e.stopPropagation()}
-          >
-            <div className="text-xs text-cyan-400 font-semibold mb-2">
-              Label Segment {editingSegmentLabel + 1}
-            </div>
-            <input
-              ref={segmentLabelInputRef}
-              value={segmentLabelDraft}
-              onChange={(e) => setSegmentLabelDraft(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === "Enter") commitSegmentLabel();
-                if (e.key === "Escape") setEditingSegmentLabel(null);
-              }}
-              placeholder="e.g., Normal Service, Experimental Redesign..."
-              className="w-full bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-sm text-white placeholder-gray-600 outline-none focus:border-cyan-400/50 transition-colors"
-            />
-            <div className="flex items-center gap-2 mt-3">
-              <button
-                onClick={commitSegmentLabel}
-                className="flex-1 py-1.5 rounded-lg text-xs font-semibold bg-cyan-600/80 hover:bg-cyan-600 text-white border border-cyan-500/50 transition-colors"
-              >
-                Save
-              </button>
-              <button
-                onClick={() => setEditingSegmentLabel(null)}
-                className="flex-1 py-1.5 rounded-lg text-xs font-semibold bg-white/5 hover:bg-white/10 text-gray-400 border border-white/10 transition-colors"
-              >
-                Cancel
-              </button>
-              {segmentLabels[editingSegmentLabel] && (
-                <button
-                  onClick={() => {
-                    const newLabels = { ...segmentLabels };
-                    delete newLabels[editingSegmentLabel];
-                    setSegmentLabels(newLabels);
-                    onSegmentLabelsChange?.(newLabels);
-                    setEditingSegmentLabel(null);
-                  }}
-                  title="Remove label"
-                  className="py-1.5 px-2.5 rounded-lg text-xs text-red-400 border border-red-500/20 hover:border-red-500/40 bg-red-950/20 transition-colors"
-                >
-                  Clear
-                </button>
-              )}
-            </div>
-          </div>
-        </>
-      )}
 
       {/* ── Segment statistics cards ── */}
       {spc.segments.length > 0 && activeTab === "control" && (
@@ -2527,6 +2349,186 @@ export default function SpcChart({
           </div>
         </div>
       )}
+
+          {/* Moving Range Chart */}
+          {showMrChart && (
+            <div className="w-full rounded-xl overflow-hidden border border-white/5">
+              <div className="flex items-center gap-2 px-4 pt-3 pb-0">
+                <span className="text-[11px] font-semibold text-violet-400 uppercase tracking-wider">
+                  Moving Range
+                </span>
+                <span className="text-[10px] text-gray-600">
+                  R̄ = {spc.mrMean.toFixed(3)}
+                  {"  ·  "}
+                  UCL = {spc.mrUcl.toFixed(3)}
+                  {filteredOmittedIndices.length > 0 && (
+                    <span className="ml-2 text-gray-700">
+                      · {filteredOmittedIndices.length} omitted
+                    </span>
+                  )}
+                </span>
+              </div>
+              <Plot
+                data={mrData}
+                layout={mrLayout}
+                config={{
+                  ...config,
+                  toImageButtonOptions: { filename: `${localTitle.replace(/\s+/g, "_")}_MR` },
+                }}
+                style={{ width: "100%", height: "180px" }}
+                useResizeHandler
+              />
+            </div>
+          )}
+        </>
+      )}
+
+      {/* ── Tab: Distribution (Histogram) ── */}
+      {activeTab === "distribution" && (
+        <HistogramChart
+          values={histogramValues}
+          title={localTitle}
+          unit={unit}
+          lsl={lsl}
+          usl={usl}
+        />
+      )}
+
+      {/* ── Tab: Box Plot ── */}
+      {activeTab === "boxplot" && (
+        <BoxPlot
+          values={filteredValues}
+          dates={filteredDates}
+          title={localTitle}
+          unit={unit}
+          splitIndices={filteredSplitIndices}
+        />
+      )}
+
+      {/* ── Color Picker Modal ── */}
+      {colorPickerState && (
+        <ChartColorPickerModal
+          colorKey={colorPickerState.colorKey}
+          currentColor={colors[colorPickerState.colorKey]}
+          label={colorPickerState.label}
+          onColorChange={updateColor}
+          onClose={() => setColorPickerState(null)}
+          position={colorPickerState.position}
+        />
+      )}
+
+      {/* ── Annotation Popover ── */}
+      {popover !== null && (
+        <>
+          <div className="fixed inset-0 z-40" onClick={() => setPopover(null)} />
+          <div
+            className="fixed z-50 bg-[#1c1c2e] border border-amber-500/40 rounded-xl shadow-2xl p-4 w-72"
+            style={{
+              left: Math.min(popover.x, window.innerWidth - 300),
+              top: Math.min(popover.y - 10, window.innerHeight - 160),
+            }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="text-xs text-amber-400 font-semibold mb-2">
+              {popover.existingText
+                ? `Edit note — ${filteredDates[popover.dateIndex]}`
+                : `Add note — ${filteredDates[popover.dateIndex]}`}
+            </div>
+            <input
+              ref={popoverInputRef}
+              value={popoverDraft}
+              onChange={(e) => setPopoverDraft(e.target.value)}
+              onKeyDown={(e) => { if (e.key === "Enter") commitAnnotation(); if (e.key === "Escape") setPopover(null); }}
+              placeholder={`Note for ${filteredDates[popover.dateIndex]}…`}
+              className="w-full bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-sm text-white placeholder-gray-600 outline-none focus:border-amber-400/50 transition-colors"
+            />
+            <div className="flex items-center gap-2 mt-3">
+              <button
+                onClick={commitAnnotation}
+                className="flex-1 py-1.5 rounded-lg text-xs font-semibold bg-amber-600/80 hover:bg-amber-600 text-white border border-amber-500/50 transition-colors"
+              >
+                Save
+              </button>
+              <button
+                onClick={() => setPopover(null)}
+                className="flex-1 py-1.5 rounded-lg text-xs font-semibold bg-white/5 hover:bg-white/10 text-gray-400 border border-white/10 transition-colors"
+              >
+                Cancel
+              </button>
+              {popover.existingText && (
+                <button
+                  onClick={deleteAnnotation}
+                  title="Delete this note"
+                  className="py-1.5 px-2.5 rounded-lg text-xs text-red-400 border border-red-500/20 hover:border-red-500/40 bg-red-950/20 transition-colors"
+                >
+                  Delete
+                </button>
+              )}
+            </div>
+          </div>
+        </>
+      )}
+
+      {/* ── Segment Label Editing Popover ── */}
+      {editingSegmentLabel !== null && (
+        <>
+          <div className="fixed inset-0 z-40" onClick={() => setEditingSegmentLabel(null)} />
+          <div
+            className="fixed z-50 bg-[#1c1c2e] border border-cyan-500/40 rounded-xl shadow-2xl p-4 w-80"
+            style={{
+              left: "50%",
+              top: "50%",
+              transform: "translate(-50%, -50%)",
+            }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="text-xs text-cyan-400 font-semibold mb-2">
+              Label Segment {editingSegmentLabel + 1}
+            </div>
+            <input
+              ref={segmentLabelInputRef}
+              value={segmentLabelDraft}
+              onChange={(e) => setSegmentLabelDraft(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") commitSegmentLabel();
+                if (e.key === "Escape") setEditingSegmentLabel(null);
+              }}
+              placeholder="e.g., Normal Service, Experimental Redesign..."
+              className="w-full bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-sm text-white placeholder-gray-600 outline-none focus:border-cyan-400/50 transition-colors"
+            />
+            <div className="flex items-center gap-2 mt-3">
+              <button
+                onClick={commitSegmentLabel}
+                className="flex-1 py-1.5 rounded-lg text-xs font-semibold bg-cyan-600/80 hover:bg-cyan-600 text-white border border-cyan-500/50 transition-colors"
+              >
+                Save
+              </button>
+              <button
+                onClick={() => setEditingSegmentLabel(null)}
+                className="flex-1 py-1.5 rounded-lg text-xs font-semibold bg-white/5 hover:bg-white/10 text-gray-400 border border-white/10 transition-colors"
+              >
+                Cancel
+              </button>
+              {segmentLabels[editingSegmentLabel] && (
+                <button
+                  onClick={() => {
+                    const newLabels = { ...segmentLabels };
+                    delete newLabels[editingSegmentLabel];
+                    setSegmentLabels(newLabels);
+                    onSegmentLabelsChange?.(newLabels);
+                    setEditingSegmentLabel(null);
+                  }}
+                  title="Remove label"
+                  className="py-1.5 px-2.5 rounded-lg text-xs text-red-400 border border-red-500/20 hover:border-red-500/40 bg-red-950/20 transition-colors"
+                >
+                  Clear
+                </button>
+              )}
+            </div>
+          </div>
+        </>
+      )}
+
     </div>
   );
 }
