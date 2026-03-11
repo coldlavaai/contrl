@@ -567,6 +567,7 @@ function NewChartPageInner() {
   const [omittedMap, setOmittedMap] = useState<Record<string, number[]>>({});
   const [xAxisLabelsMap, setXAxisLabelsMap] = useState<Record<string, string>>({});
   const [yAxisLabelsMap, setYAxisLabelsMap] = useState<Record<string, string>>({});
+  const [segmentLabelsMap, setSegmentLabelsMap] = useState<Record<string, Record<number, string>>>({});
   const [showScatter, setShowScatter] = useState(false);
   const [usingDemo, setUsingDemo] = useState(false);
 
@@ -614,6 +615,7 @@ function NewChartPageInner() {
     setOmittedMap({});
     setXAxisLabelsMap({});
     setYAxisLabelsMap({});
+    setSegmentLabelsMap({});
     setShowScatter(false);
     setState("charts");
   };
@@ -880,6 +882,7 @@ function NewChartPageInner() {
               omittedMap={omittedMap}
               xAxisLabelsMap={xAxisLabelsMap}
               yAxisLabelsMap={yAxisLabelsMap}
+              segmentLabelsMap={segmentLabelsMap}
               showScatter={showScatter}
               setShowScatter={setShowScatter}
               onAddSplit={handleAddSplit}
@@ -889,6 +892,7 @@ function NewChartPageInner() {
               onOmittedChange={(name, idx) => setOmittedMap((p) => ({ ...p, [name]: idx }))}
               onXAxisLabelChange={(name, label) => setXAxisLabelsMap((p) => ({ ...p, [name]: label }))}
               onYAxisLabelChange={(name, label) => setYAxisLabelsMap((p) => ({ ...p, [name]: label }))}
+              onSegmentLabelsChange={(name, labels) => setSegmentLabelsMap((p) => ({ ...p, [name]: labels }))}
             />
           )}
 
@@ -1029,6 +1033,8 @@ interface XmrChartViewProps {
   onOmittedChange: (name: string, idx: number[]) => void;
   onXAxisLabelChange: (name: string, label: string) => void;
   onYAxisLabelChange: (name: string, label: string) => void;
+  segmentLabelsMap: Record<string, Record<number, string>>;
+  onSegmentLabelsChange: (name: string, labels: Record<number, string>) => void;
 }
 
 function XmrChartView({
@@ -1048,6 +1054,8 @@ function XmrChartView({
   onOmittedChange,
   onXAxisLabelChange,
   onYAxisLabelChange,
+  segmentLabelsMap,
+  onSegmentLabelsChange,
 }: XmrChartViewProps) {
   const hasMultipleMeasures = dataset.measures.length >= 2;
 
@@ -1158,6 +1166,8 @@ function XmrChartView({
                 initialYAxisLabel={yAxisLabelsMap[m.name] ?? m.unit}
                 onXAxisLabelChange={(label) => onXAxisLabelChange(m.name, label)}
                 onYAxisLabelChange={(label) => onYAxisLabelChange(m.name, label)}
+                initialSegmentLabels={segmentLabelsMap[m.name] ?? {}}
+                onSegmentLabelsChange={(labels) => onSegmentLabelsChange(m.name, labels)}
               />
             </TabsContent>
           );
