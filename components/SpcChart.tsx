@@ -45,6 +45,9 @@ interface SpcChartProps {
   // Per-chart custom colors
   initialCustomColors?: ChartColors;
   onCustomColorsChange?: (colors: ChartColors) => void;
+  // Feature 5: Segment labels
+  initialSegmentLabels?: Record<number, string>;
+  onSegmentLabelsChange?: (labels: Record<number, string>) => void;
 }
 
 interface PopoverState {
@@ -109,6 +112,8 @@ export default function SpcChart({
   onYAxisLabelChange,
   initialCustomColors,
   onCustomColorsChange,
+  initialSegmentLabels = {},
+  onSegmentLabelsChange,
 }: SpcChartProps) {
   // ── Color settings (per-chart with global fallback) ───────────────────────
   const { colors, customColors, updateColor, resetToDefaults, hasCustomizations } = usePerChartColors(initialCustomColors);
@@ -213,6 +218,36 @@ export default function SpcChart({
   // ── Feature 3: Trend Line ────────────────────────────────────────────────
   const [showTrendLine, setShowTrendLine] = useState(initialShowTrendLine);
 
+  // ── Feature 5: Segment Labels ─────────────────────────────────────────────
+  const [segmentLabels, setSegmentLabels] = useState<Record<number, string>>(initialSegmentLabels);
+  const [editingSegmentLabel, setEditingSegmentLabel] = useState<number | null>(null);
+  const [segmentLabelDraft, setSegmentLabelDraft] = useState("");
+  const segmentLabelInputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    if (editingSegmentLabel !== null) segmentLabelInputRef.current?.focus();
+  }, [editingSegmentLabel]);
+
+  const startEditingSegmentLabel = (segmentIndex: number) => {
+    setEditingSegmentLabel(segmentIndex);
+    setSegmentLabelDraft(segmentLabels[segmentIndex] || "");
+  };
+
+  const commitSegmentLabel = () => {
+    if (editingSegmentLabel === null) return;
+    const trimmed = segmentLabelDraft.trim();
+    const newLabels = { ...segmentLabels };
+    if (trimmed) {
+      newLabels[editingSegmentLabel] = trimmed;
+    } else {
+      delete newLabels[editingSegmentLabel];
+    }
+    setSegmentLabels(newLabels);
+    onSegmentLabelsChange?.(newLabels);
+    setEditingSegmentLabel(null);
+    setSegmentLabelDraft("");
+  };
+
   // ── Chart tabs: Control Chart vs Distribution ─────────────────────────────
   const [activeTab, setActiveTab] = useState<"control" | "distribution">("control");
 
@@ -233,6 +268,7 @@ export default function SpcChart({
       showTrendLine,
       xAxisLabel,
       yAxisLabel,
+      segmentLabels: Object.keys(segmentLabels).length > 0 ? segmentLabels : undefined,
       customColors: hasCustomizations ? customColors : undefined,
     });
     setSavedFlash(true);
@@ -303,7 +339,13 @@ export default function SpcChart({
   const trendPoints = spc.points.filter((p) => p.signal === "trend" && !omittedSet.has(p.index));
   const omittedPoints = spc.points.filter((p) => omittedSet.has(p.index));
 
-  const commonMarker = { size: 7, line: { width: 1, color: "#1e1e2e" } };
+  // Dynamic marker sizing based on dataset volume (Feedback #4)
+  const datasetLength = values.length;
+  const baseMarkerSize = datasetLength > 200 ? 5 : datasetLength > 100 ? 6 : 7;
+  const runMarkerSize = datasetLength > 200 ? 3 : datasetLength > 100 ? 4 : 5;
+  const trendMarkerSize = datasetLength > 200 ? 4 : datasetLength > 100 ? 5 : 6;
+
+  const commonMarker = { size: baseMarkerSize, line: { width: 1, color: "#1e1e2e" } };
 
   // ── Split shapes ──────────────────────────────────────────────────────────
   const splitShapes = splitIndices.map((idx) => ({
@@ -460,14 +502,14 @@ export default function SpcChart({
       },
       hovertemplate: `<b>%{x}</b><br>Value: %{y:.1f} ${unit}<br><span style="color:#6b7280">⊘ Omitted</span><extra></extra>`,
     },
-    // 6. Signal dots — rendered LAST so they appear on top
+    // 6. Signal dots — rendered LAST so they appear on top (Feedback #3: smaller run markers)
     {
       type: "scatter",
       mode: "markers",
       name: "Run Signal",
       x: runPoints.map((p) => p.date),
       y: runPoints.map((p) => p.value),
-      marker: { ...commonMarker, color: "#ef4444", size: 10 },
+      marker: { ...commonMarker, color: "#ef4444", size: runMarkerSize },
       hovertemplate: `<b>%{x}</b><br>Value: %{y:.1f} ${unit}<br><span style="color:#ef4444">⚠ Run signal</span><extra></extra>`,
     },
     {
@@ -476,7 +518,7 @@ export default function SpcChart({
       name: "Trend Signal",
       x: trendPoints.map((p) => p.date),
       y: trendPoints.map((p) => p.value),
-      marker: { ...commonMarker, color: "#f97316", size: 10 },
+      marker: { ...commonMarker, color: "#f97316", size: trendMarkerSize },
       hovertemplate: `<b>%{x}</b><br>Value: %{y:.1f} ${unit}<br><span style="color:#f97316">⚠ Trend signal</span><extra></extra>`,
     },
   ];
@@ -1437,6 +1479,66 @@ export default function SpcChart({
         </>
       )}
 
+      {/* ── Segment Label Editing Popover ── */}
+      {editingSegmentLabel !== null && (
+        <>
+          <div className="fixed inset-0 z-40" onClick={() => setEditingSegmentLabel(null)} />
+          <div
+            className="fixed z-50 bg-[#1c1c2e] border border-cyan-500/40 rounded-xl shadow-2xl p-4 w-80"
+            style={{
+              left: "50%",
+              top: "50%",
+              transform: "translate(-50%, -50%)",
+            }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="text-xs text-cyan-400 font-semibold mb-2">
+              Label Segment {editingSegmentLabel + 1}
+            </div>
+            <input
+              ref={segmentLabelInputRef}
+              value={segmentLabelDraft}
+              onChange={(e) => setSegmentLabelDraft(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") commitSegmentLabel();
+                if (e.key === "Escape") setEditingSegmentLabel(null);
+              }}
+              placeholder="e.g., Normal Service, Experimental Redesign..."
+              className="w-full bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-sm text-white placeholder-gray-600 outline-none focus:border-cyan-400/50 transition-colors"
+            />
+            <div className="flex items-center gap-2 mt-3">
+              <button
+                onClick={commitSegmentLabel}
+                className="flex-1 py-1.5 rounded-lg text-xs font-semibold bg-cyan-600/80 hover:bg-cyan-600 text-white border border-cyan-500/50 transition-colors"
+              >
+                Save
+              </button>
+              <button
+                onClick={() => setEditingSegmentLabel(null)}
+                className="flex-1 py-1.5 rounded-lg text-xs font-semibold bg-white/5 hover:bg-white/10 text-gray-400 border border-white/10 transition-colors"
+              >
+                Cancel
+              </button>
+              {segmentLabels[editingSegmentLabel] && (
+                <button
+                  onClick={() => {
+                    const newLabels = { ...segmentLabels };
+                    delete newLabels[editingSegmentLabel];
+                    setSegmentLabels(newLabels);
+                    onSegmentLabelsChange?.(newLabels);
+                    setEditingSegmentLabel(null);
+                  }}
+                  title="Remove label"
+                  className="py-1.5 px-2.5 rounded-lg text-xs text-red-400 border border-red-500/20 hover:border-red-500/40 bg-red-950/20 transition-colors"
+                >
+                  Clear
+                </button>
+              )}
+            </div>
+          </div>
+        </>
+      )}
+
       {/* ── Segment statistics cards ── */}
       {spc.segments.length > 0 && activeTab === "control" && (
         <div className="space-y-3">
@@ -1486,10 +1588,26 @@ export default function SpcChart({
                 >
                   <div className="flex items-start justify-between gap-2">
                     <div>
-                      <div className="flex items-center gap-2">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        {/* Segment label (if set) */}
+                        {segmentLabels[i] && (
+                          <div className="text-sm font-semibold text-cyan-400">
+                            {segmentLabels[i]}
+                          </div>
+                        )}
                         <div className="text-xs font-semibold text-purple-400 uppercase tracking-wider">
                           {hasMultipleSegments ? `Segment ${i + 1}` : "Overall"}
                         </div>
+                        {/* Label edit button */}
+                        {!readOnly && (
+                          <button
+                            onClick={() => startEditingSegmentLabel(i)}
+                            title="Label this segment"
+                            className="text-[10px] text-gray-600 hover:text-cyan-400 transition-colors"
+                          >
+                            {segmentLabels[i] ? "✎" : "+ Label"}
+                          </button>
+                        )}
                         {isRunSplit && (
                           <span className="text-[9px] font-bold bg-purple-500/20 text-purple-300 border border-purple-500/30 px-1.5 py-0.5 rounded uppercase tracking-wider">
                             Run Split
@@ -1503,7 +1621,7 @@ export default function SpcChart({
                         )}
                       </div>
                       <div className="text-[11px] text-gray-600 mt-0.5">
-                        n = {n} data point{n !== 1 ? "s" : ""}
+                        <span className="font-medium text-gray-500">Data Volume:</span> {n} data point{n !== 1 ? "s" : ""}
                         {omittedIndices.filter((oi) => oi >= seg.startIndex && oi <= seg.endIndex).length > 0 && (
                           <span className="ml-1.5 text-gray-700">
                             ({omittedIndices.filter((oi) => oi >= seg.startIndex && oi <= seg.endIndex).length} omitted)
