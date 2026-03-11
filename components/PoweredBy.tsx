@@ -9,7 +9,7 @@ export default function PoweredBy() {
         alt="Cold Lava"
         width={100}
         height={30}
-        className="object-contain"
+        className="object-contain invert"
       />
     </div>
   );
