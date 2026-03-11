@@ -813,6 +813,31 @@ export default function SpcChart({
       captureevents: false,
     })),
     ...targetAnnotations,
+    // Segment label annotations — appear at the top of split lines
+    ...filteredSplitIndices
+      .map((splitIdx, i) => {
+        // The split creates a new segment AFTER it, so we label segment i+1
+        const segmentIndex = i + 1;
+        const label = segmentLabels[segmentIndex];
+        if (!label) return null;
+        
+        return {
+          x: filteredDates[splitIdx],
+          y: 1,
+          yref: "paper" as const,
+          text: label,
+          showarrow: false,
+          font: { color: "#06b6d4", size: 12, family: "Inter, sans-serif" },
+          bgcolor: "rgba(10,10,15,0.9)",
+          bordercolor: "#06b6d4",
+          borderwidth: 1,
+          borderpad: 4,
+          xanchor: "center" as const,
+          yanchor: "bottom" as const,
+          captureevents: false,
+        };
+      })
+      .filter((ann) => ann !== null),
   ];
 
   // ── Non-omitted data connecting line ──────────────────────────────────────
