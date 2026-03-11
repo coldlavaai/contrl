@@ -2,6 +2,7 @@
 
 import * as React from "react";
 import Link from "next/link";
+import Image from "next/image";
 import { usePathname, useSearchParams } from "next/navigation";
 import { cn } from "@/lib/utils";
 import {
@@ -261,7 +262,13 @@ export default function AppSidebar({ collapsed, onToggle }: AppSidebarProps) {
         <div className="py-6 px-4 border-t border-white/[0.06] flex flex-col items-center justify-center">
           <div className="text-white font-semibold text-base mb-1">Contrl</div>
           <div className="text-gray-500 text-xs mb-2">powered by</div>
-          <div className="text-white font-semibold text-base">Cold Lava</div>
+          <Image
+            src="/cold-lava-logo.png"
+            alt="Cold Lava"
+            width={100}
+            height={30}
+            className="object-contain"
+          />
         </div>
       )}
 
