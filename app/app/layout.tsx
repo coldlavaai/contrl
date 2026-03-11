@@ -6,6 +6,7 @@ import { usePathname } from "next/navigation";
 import AppHeader from "@/components/AppHeader";
 import AppSidebar from "@/components/AppSidebar";
 import { MobileBottomNav } from "@/components/MobileBottomNav";
+import PoweredBy from "@/components/PoweredBy";
 import { cn } from "@/lib/utils";
 import { seedDemoChartsIfEmpty } from "@/lib/demoCharts";
 
@@ -55,19 +56,22 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
       {/* Main content — shifts with sidebar, only this transitions */}
       <main
         className={cn(
-          "pt-14 pb-14 md:pb-0 transition-all duration-200 min-h-[100dvh]",
+          "pt-14 pb-14 md:pb-0 transition-all duration-200 min-h-[100dvh] flex flex-col",
           sidebarCollapsed ? "md:ml-16" : "md:ml-64"
         )}
       >
         <div
           className={cn(
-            "p-4 md:p-6 transition-opacity duration-[120ms] ease-out",
+            "p-4 md:p-6 transition-opacity duration-[120ms] ease-out flex-1",
             isTransitioning ? "opacity-0 scale-[0.99]" : "opacity-100 scale-100"
           )}
           style={{ transformOrigin: "top center" }}
         >
           {children}
         </div>
+        
+        {/* Powered by Cold Lava footer */}
+        <PoweredBy />
       </main>
 
       {/* Mobile bottom nav */}
