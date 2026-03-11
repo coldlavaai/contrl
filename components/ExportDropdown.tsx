@@ -64,6 +64,7 @@ export default function ExportDropdown({ chartContainerRef, fullContainerRef, ti
           }
         } catch (err) {
           console.error(`Export ${action} failed:`, err);
+          alert(`Export failed: ${err instanceof Error ? err.message : String(err)}`);
         } finally {
           setLoading(null);
           setOpen(false);
@@ -81,6 +82,7 @@ export default function ExportDropdown({ chartContainerRef, fullContainerRef, ti
         }
       } catch (err) {
         console.error(`Export ${action} failed:`, err);
+        alert(`Export failed: ${err instanceof Error ? err.message : String(err)}`);
       } finally {
         setLoading(null);
         setOpen(false);
