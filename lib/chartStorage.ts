@@ -68,6 +68,8 @@ export interface SavedChart {
   allowNegativeLcl?: boolean;
   // Chart title / axis labels (feature 5)
   chartTitle?: string;
+  // Segment labels (Jim Lomas feedback #5)
+  segmentLabels?: Record<number, string>;
 }
 
 const STORAGE_KEY = "contrl_charts";
@@ -186,6 +188,7 @@ function chartToRow(chart: SavedChart, userId: string) {
     // custom_colors: chart.customColors ?? null, // column not yet in Supabase
     lsl: chart.lsl ?? null,
     usl: chart.usl ?? null,
+    segment_labels: chart.segmentLabels ?? null,
   };
 }
 
@@ -209,6 +212,7 @@ function rowToChart(row: Record<string, unknown>): SavedChart {
     customColors: (row.custom_colors as ChartColors) ?? undefined,
     lsl: (row.lsl as number) ?? undefined,
     usl: (row.usl as number) ?? undefined,
+    segmentLabels: (row.segment_labels as Record<number, string>) ?? undefined,
   };
 }
 
