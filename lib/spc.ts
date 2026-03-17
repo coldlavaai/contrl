@@ -541,6 +541,8 @@ export interface SpcOptions {
   nelsonRules?: NelsonRuleConfig;
   /** When true, LCL is not floored at 0 (for financial metrics, etc.) */
   allowNegativeLcl?: boolean;
+  /** When true, ALL segments use trend-based (diagonal) control limits */
+  globalTrendLimits?: boolean;
 }
 
 /**
@@ -834,7 +836,7 @@ export function calculateSpc(
   splitIndices: number[] = [],
   options: SpcOptions = {}
 ): SpcResult {
-  const { method = "mean", splitModes = {}, frozenLimits = false, omittedIndices = [], nelsonRules, allowNegativeLcl = false } = options;
+  const { method = "mean", splitModes = {}, frozenLimits = false, omittedIndices = [], nelsonRules, allowNegativeLcl = false, globalTrendLimits = false } = options;
 
   if (values.length === 0) {
     return {
@@ -887,6 +889,7 @@ export function calculateSpc(
       splitModes: filteredSplitModes,
       frozenLimits,
       allowNegativeLcl,
+      globalTrendLimits,
     });
 
     // Map points back to original space
@@ -978,67 +981,69 @@ export function calculateSpc(
     const seg = calculateSegment(slice, start, method, frozenStats, allowNegativeLcl);
 
     // Mark run-split or trend-split segments (segment s was opened by splitIndices[s-1])
-    if (s > 0) {
-      const openingSplit = splitIndices[s - 1];
-      if (splitModes[openingSplit] === "run") {
-        seg.runSplitMode = true;
-      } else if (splitModes[openingSplit] === "trend") {
-        // Calculate diagonal trend limits for this segment
-        if (slice.length >= 2) {
-          const indices = slice.map((_, j) => start + j);
-          const xMean = indices.reduce((a, b) => a + b, 0) / slice.length;
-          const yMean = slice.reduce((a, b) => a + b, 0) / slice.length;
-          let sxy = 0, sxx = 0;
-          for (let j = 0; j < slice.length; j++) {
-            sxy += (indices[j] - xMean) * (slice[j] - yMean);
-            sxx += (indices[j] - xMean) ** 2;
-          }
-          const slope = sxx === 0 ? 0 : sxy / sxx;
-          const intercept = yMean - slope * xMean;
+    const openingSplit = s > 0 ? splitIndices[s - 1] : null;
+    const isRunSplit = openingSplit !== null && splitModes[openingSplit] === "run";
+    const isTrendSplit = openingSplit !== null && splitModes[openingSplit] === "trend";
 
-          // Calculate sigma from residuals' moving range (XmR consistency)
-          const residuals = slice.map((v, j) => v - (slope * (start + j) + intercept));
-          let mrTotal = 0;
-          for (let j = 1; j < residuals.length; j++) {
-            mrTotal += Math.abs(residuals[j] - residuals[j - 1]);
-          }
-          const mrBar = residuals.length > 1 ? mrTotal / (residuals.length - 1) : 0;
-          const sigma3 = mrBar * XMR_CONSTANT; // 3σ
-          const sigma1 = sigma3 / 3;
+    if (isRunSplit) {
+      seg.runSplitMode = true;
+    }
 
-          const centre: number[] = [];
-          const trendUcl: number[] = [];
-          const trendLcl: number[] = [];
-          const s1U: number[] = [];
-          const s1L: number[] = [];
-          const s2U: number[] = [];
-          const s2L: number[] = [];
-
-          for (let j = 0; j < slice.length; j++) {
-            const fitted = slope * (start + j) + intercept;
-            centre.push(fitted);
-            trendUcl.push(fitted + sigma3);
-            trendLcl.push(allowNegativeLcl ? fitted - sigma3 : Math.max(0, fitted - sigma3));
-            s1U.push(fitted + sigma1);
-            s1L.push(fitted - sigma1);
-            s2U.push(fitted + 2 * sigma1);
-            s2L.push(fitted - 2 * sigma1);
-          }
-
-          seg.trendLine = {
-            slope,
-            intercept,
-            sigma: sigma1,
-            centre,
-            ucl: trendUcl,
-            lcl: trendLcl,
-            sigma1Upper: s1U,
-            sigma1Lower: s1L,
-            sigma2Upper: s2U,
-            sigma2Lower: s2L,
-          };
-        }
+    // Calculate diagonal trend limits when: globalTrendLimits is on, OR this segment is a trend split
+    // (but NOT if it's a run split — run splits hide control limits)
+    if ((globalTrendLimits || isTrendSplit) && !isRunSplit && slice.length >= 2) {
+      const indices = slice.map((_, j) => start + j);
+      const xMean = indices.reduce((a, b) => a + b, 0) / slice.length;
+      const yMean = slice.reduce((a, b) => a + b, 0) / slice.length;
+      let sxy = 0, sxx = 0;
+      for (let j = 0; j < slice.length; j++) {
+        sxy += (indices[j] - xMean) * (slice[j] - yMean);
+        sxx += (indices[j] - xMean) ** 2;
       }
+      const slope = sxx === 0 ? 0 : sxy / sxx;
+      const intercept = yMean - slope * xMean;
+
+      // Calculate sigma from residuals' moving range (XmR consistency)
+      const residuals = slice.map((v, j) => v - (slope * (start + j) + intercept));
+      let mrTotal = 0;
+      for (let j = 1; j < residuals.length; j++) {
+        mrTotal += Math.abs(residuals[j] - residuals[j - 1]);
+      }
+      const mrBar = residuals.length > 1 ? mrTotal / (residuals.length - 1) : 0;
+      const sigma3 = mrBar * XMR_CONSTANT; // 3σ
+      const sigma1 = sigma3 / 3;
+
+      const centre: number[] = [];
+      const trendUcl: number[] = [];
+      const trendLcl: number[] = [];
+      const s1U: number[] = [];
+      const s1L: number[] = [];
+      const s2U: number[] = [];
+      const s2L: number[] = [];
+
+      for (let j = 0; j < slice.length; j++) {
+        const fitted = slope * (start + j) + intercept;
+        centre.push(fitted);
+        trendUcl.push(fitted + sigma3);
+        trendLcl.push(allowNegativeLcl ? fitted - sigma3 : Math.max(0, fitted - sigma3));
+        s1U.push(fitted + sigma1);
+        s1L.push(fitted - sigma1);
+        s2U.push(fitted + 2 * sigma1);
+        s2L.push(fitted - 2 * sigma1);
+      }
+
+      seg.trendLine = {
+        slope,
+        intercept,
+        sigma: sigma1,
+        centre,
+        ucl: trendUcl,
+        lcl: trendLcl,
+        sigma1Upper: s1U,
+        sigma1Lower: s1L,
+        sigma2Upper: s2U,
+        sigma2Lower: s2L,
+      };
     }
 
     segments.push(seg);

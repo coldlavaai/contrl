@@ -60,7 +60,9 @@ interface SpcChartProps {
   // Zone lines (1σ, 2σ)
   initialShowZoneLines?: boolean;
   onShowZoneLinesChange?: (show: boolean) => void;
-  // (Trend control limits now integrated into split modes — no separate props needed)
+  // Global trend limits (diagonal control limits for all segments)
+  initialShowTrendLimits?: boolean;
+  onShowTrendLimitsChange?: (show: boolean) => void;
   // LCL below zero handling
   initialAllowNegativeLcl?: boolean;
   onAllowNegativeLclChange?: (allow: boolean) => void;
@@ -142,6 +144,8 @@ export default function SpcChart({
   onNelsonRulesChange,
   initialShowZoneLines = true,
   onShowZoneLinesChange,
+  initialShowTrendLimits = false,
+  onShowTrendLimitsChange,
   initialAllowNegativeLcl = false,
   onAllowNegativeLclChange,
   initialChartTitle,
@@ -300,7 +304,8 @@ export default function SpcChart({
   // ── Zone lines (1σ, 2σ) ────────────────────────────────────────────────────
   const [showZoneLines, setShowZoneLines] = useState(initialShowZoneLines);
 
-  // ── (Legacy: trend control limits state removed — now part of split modes) ──
+  // ── Trend Limits (global diagonal control limits) ──────────────────────────
+  const [showTrendLimits, setShowTrendLimits] = useState(initialShowTrendLimits);
 
   // ── LCL below zero handling ────────────────────────────────────────────────
   const [allowNegativeLcl, setAllowNegativeLcl] = useState(initialAllowNegativeLcl);
@@ -402,8 +407,8 @@ export default function SpcChart({
   const omittedSet = useMemo(() => new Set(filteredOmittedIndices), [filteredOmittedIndices]);
 
   const spc: SpcResult = useMemo(
-    () => calculateSpc(filteredValues, filteredDates, filteredSplitIndices, { method, splitModes, frozenLimits, omittedIndices: filteredOmittedIndices, nelsonRules, allowNegativeLcl }),
-    [filteredValues, filteredDates, filteredSplitIndices, method, splitModes, frozenLimits, filteredOmittedIndices, nelsonRules, allowNegativeLcl]
+    () => calculateSpc(filteredValues, filteredDates, filteredSplitIndices, { method, splitModes, frozenLimits, omittedIndices: filteredOmittedIndices, nelsonRules, allowNegativeLcl, globalTrendLimits: showTrendLimits }),
+    [filteredValues, filteredDates, filteredSplitIndices, method, splitModes, frozenLimits, filteredOmittedIndices, nelsonRules, allowNegativeLcl, showTrendLimits]
   );
 
   const segmentSignals = useMemo(
