@@ -511,7 +511,7 @@ export default function LibraryPage() {
                 initialLsl={selected.lsl}
                 initialUsl={selected.usl}
                 initialShowZoneLines={selected.showZoneLines ?? true}
-                initialShowTrendLimits={selected.showTrendLimits ?? false}
+                initialShowTrendLimits={selected.trendControlLimits ?? false}
                 initialAllowNegativeLcl={selected.allowNegativeLcl ?? false}
                 initialChartTitle={selected.chartTitle}
                 readOnly
