@@ -1533,6 +1533,27 @@ export default function SpcChart({
             <span className={onOffBadge(showZoneLines)}>{showZoneLines ? "ON" : "OFF"}</span>
           </button>
 
+          {/* ── Trend Limits (Diagonal) toggle ── */}
+          <button
+            onClick={() => {
+              const next = !showTrendLimits;
+              setShowTrendLimits(next);
+              onShowTrendLimitsChange?.(next);
+            }}
+            className={toolbarBtn(showTrendLimits, "bg-orange-700/60 border-orange-500/60 text-white shadow-[0_0_12px_rgba(249,115,22,0.2)]")}
+            title="Show trend-based (diagonal) control limits"
+          >
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none"
+              stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"
+              className={showTrendLimits ? "text-white" : "text-gray-500"}>
+              <line x1="3" y1="18" x2="21" y2="6" />
+              <line x1="3" y1="22" x2="21" y2="10" strokeDasharray="3 3" />
+              <line x1="3" y1="14" x2="21" y2="2" strokeDasharray="3 3" />
+            </svg>
+            <span>Trend Limits</span>
+            <span className={onOffBadge(showTrendLimits)}>{showTrendLimits ? "ON" : "OFF"}</span>
+          </button>
+
           {/* ── LCL Below Zero toggle ── */}
           <button
             onClick={() => {
