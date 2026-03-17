@@ -117,9 +117,9 @@ export default function ColumnMapper({ sheet, onConfirm }: ColumnMapperProps) {
           />
         </div>
 
-        {/* Date column */}
+        {/* Sequence / X-axis column */}
         <div className="mb-5">
-          <label className="block text-xs text-gray-400 mb-1">Date column</label>
+          <label className="block text-xs text-gray-400 mb-1">Time / sequence column</label>
           <select
             value={dateCol}
             onChange={(e) => setDateCol(e.target.value)}

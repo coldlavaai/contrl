@@ -140,7 +140,7 @@ export default function SpcChart({
   onUslChange,
   initialNelsonRules,
   onNelsonRulesChange,
-  initialShowZoneLines = false,
+  initialShowZoneLines = true,
   onShowZoneLinesChange,
   initialAllowNegativeLcl = false,
   onAllowNegativeLclChange,

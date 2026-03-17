@@ -99,7 +99,7 @@ export default function LandingPage() {
               {
                 icon: "📁",
                 title: "Excel Upload",
-                desc: "Drag and drop your .xlsx or .csv file. Map your date column and any number of measures. Charts generated instantly.",
+                desc: "Drag and drop your .xlsx or .csv file. Map your time/sequence column and any number of measures. Charts generated instantly.",
               },
               {
                 icon: "📋",

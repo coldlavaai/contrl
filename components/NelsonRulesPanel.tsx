@@ -54,7 +54,7 @@ export default function NelsonRulesPanel({ config, onChange, violationCounts }: 
       rule3Count: 6,
       rule4: false,
       rule5: false,
-      rule5b: false,
+      rule5b: true,
       rule6: false,
       rule7: false,
       rule8: false,

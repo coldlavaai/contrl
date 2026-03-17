@@ -229,7 +229,7 @@ export const DEFAULT_NELSON_RULES: NelsonRuleConfig = {
   rule3Count: 6,
   rule4: false,
   rule5: false,
-  rule5b: false,
+  rule5b: true,
   rule6: false,
   rule7: false,
   rule8: false,

@@ -245,7 +245,7 @@ function AttributeColMap({ sheet, chartType, onConfirm }: AttributeColMapProps) 
       <h3 className="text-white font-semibold">Map your columns</h3>
 
       <div>
-        <label className="block text-xs text-gray-400 mb-1">Period / date column</label>
+        <label className="block text-xs text-gray-400 mb-1">Time / sequence column</label>
         <select
           value={dateCol}
           onChange={(e) => setDateCol(e.target.value)}
@@ -458,7 +458,7 @@ function SubgroupColMap({ sheet, onConfirm }: SubgroupColMapProps) {
       {/* Label column */}
       <div>
         <label className="block text-xs text-gray-400 mb-1">
-          {mode === "columns" ? "Subgroup label column" : "Label / Date column"}
+          {mode === "columns" ? "Subgroup label column" : "Label / sequence column"}
         </label>
         <select
           value={labelCol}
