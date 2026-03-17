@@ -1387,7 +1387,72 @@ export default function SpcChart({
         </div>
       )}
 
-      {/* ── Toolbar ── */}
+      {/* ── Display Toggles (visible even in readOnly) ── */}
+      <div className="flex items-center gap-2 flex-wrap mb-2">
+        <button
+          onClick={() => setShowTrendLine((v) => !v)}
+          className={toolbarBtn(showTrendLine, "bg-green-700/60 border-green-500/60 text-white shadow-[0_0_12px_rgba(34,197,94,0.25)]")}
+          title="Show linear regression trend line"
+        >
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none"
+            stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"
+            className={showTrendLine ? "text-white" : "text-gray-500"}>
+            <polyline points="22 7 13.5 15.5 8.5 10.5 2 17" />
+            <polyline points="16 7 22 7 22 13" />
+          </svg>
+          <span>Trend Line</span>
+          <span className={onOffBadge(showTrendLine)}>{showTrendLine ? "ON" : "OFF"}</span>
+        </button>
+
+        <button
+          onClick={() => { const next = !showZoneLines; setShowZoneLines(next); onShowZoneLinesChange?.(next); }}
+          className={toolbarBtn(showZoneLines, "bg-gray-700/60 border-gray-500/60 text-white shadow-[0_0_12px_rgba(107,114,128,0.2)]")}
+          title="Show ±1σ and ±2σ zone lines"
+        >
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none"
+            stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"
+            className={showZoneLines ? "text-white" : "text-gray-500"}>
+            <line x1="3" y1="6" x2="21" y2="6" />
+            <line x1="3" y1="12" x2="21" y2="12" strokeDasharray="2 2" />
+            <line x1="3" y1="18" x2="21" y2="18" />
+          </svg>
+          <span>Zone Lines</span>
+          <span className={onOffBadge(showZoneLines)}>{showZoneLines ? "ON" : "OFF"}</span>
+        </button>
+
+        <button
+          onClick={() => { const next = !showTrendLimits; setShowTrendLimits(next); onShowTrendLimitsChange?.(next); }}
+          className={toolbarBtn(showTrendLimits, "bg-orange-700/60 border-orange-500/60 text-white shadow-[0_0_12px_rgba(249,115,22,0.2)]")}
+          title="Show trend-based (diagonal) control limits"
+        >
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none"
+            stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"
+            className={showTrendLimits ? "text-white" : "text-gray-500"}>
+            <line x1="3" y1="18" x2="21" y2="6" />
+            <line x1="3" y1="22" x2="21" y2="10" strokeDasharray="3 3" />
+            <line x1="3" y1="14" x2="21" y2="2" strokeDasharray="3 3" />
+          </svg>
+          <span>Trend Limits</span>
+          <span className={onOffBadge(showTrendLimits)}>{showTrendLimits ? "ON" : "OFF"}</span>
+        </button>
+
+        <button
+          onClick={() => { const next = !allowNegativeLcl; setAllowNegativeLcl(next); onAllowNegativeLclChange?.(next); }}
+          className={toolbarBtn(allowNegativeLcl, "bg-blue-700/60 border-blue-500/60 text-white shadow-[0_0_12px_rgba(59,130,246,0.2)]")}
+          title="Allow LCL to go below zero"
+        >
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none"
+            stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"
+            className={allowNegativeLcl ? "text-white" : "text-gray-500"}>
+            <line x1="5" y1="12" x2="19" y2="12" />
+            <line x1="12" y1="5" x2="12" y2="19" />
+          </svg>
+          <span>LCL &lt; 0</span>
+          <span className={onOffBadge(allowNegativeLcl)}>{allowNegativeLcl ? "ON" : "OFF"}</span>
+        </button>
+      </div>
+
+      {/* ── Edit Toolbar ── */}
       {!readOnly && (
         <div className="flex items-center gap-2 flex-wrap">
 
@@ -1495,84 +1560,6 @@ export default function SpcChart({
               <span className={onOffBadge(frozenLimits)}>{frozenLimits ? "ON" : "OFF"}</span>
             </button>
           )}
-
-          {/* ── Feature 3: Trend Line toggle ── */}
-          <button
-            onClick={() => setShowTrendLine((v) => !v)}
-            className={toolbarBtn(showTrendLine, "bg-green-700/60 border-green-500/60 text-white shadow-[0_0_12px_rgba(34,197,94,0.25)]")}
-            title="Show linear regression trend line"
-          >
-            <svg width="13" height="13" viewBox="0 0 24 24" fill="none"
-              stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"
-              className={showTrendLine ? "text-white" : "text-gray-500"}>
-              <polyline points="22 7 13.5 15.5 8.5 10.5 2 17" />
-              <polyline points="16 7 22 7 22 13" />
-            </svg>
-            <span>Trend Line</span>
-            <span className={onOffBadge(showTrendLine)}>{showTrendLine ? "ON" : "OFF"}</span>
-          </button>
-
-          {/* ── Zone Lines toggle ── */}
-          <button
-            onClick={() => {
-              const next = !showZoneLines;
-              setShowZoneLines(next);
-              onShowZoneLinesChange?.(next);
-            }}
-            className={toolbarBtn(showZoneLines, "bg-gray-700/60 border-gray-500/60 text-white shadow-[0_0_12px_rgba(107,114,128,0.2)]")}
-            title="Show ±1σ and ±2σ zone lines"
-          >
-            <svg width="13" height="13" viewBox="0 0 24 24" fill="none"
-              stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"
-              className={showZoneLines ? "text-white" : "text-gray-500"}>
-              <line x1="3" y1="6" x2="21" y2="6" />
-              <line x1="3" y1="12" x2="21" y2="12" strokeDasharray="2 2" />
-              <line x1="3" y1="18" x2="21" y2="18" />
-            </svg>
-            <span>Zone Lines</span>
-            <span className={onOffBadge(showZoneLines)}>{showZoneLines ? "ON" : "OFF"}</span>
-          </button>
-
-          {/* ── Trend Limits (Diagonal) toggle ── */}
-          <button
-            onClick={() => {
-              const next = !showTrendLimits;
-              setShowTrendLimits(next);
-              onShowTrendLimitsChange?.(next);
-            }}
-            className={toolbarBtn(showTrendLimits, "bg-orange-700/60 border-orange-500/60 text-white shadow-[0_0_12px_rgba(249,115,22,0.2)]")}
-            title="Show trend-based (diagonal) control limits"
-          >
-            <svg width="13" height="13" viewBox="0 0 24 24" fill="none"
-              stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"
-              className={showTrendLimits ? "text-white" : "text-gray-500"}>
-              <line x1="3" y1="18" x2="21" y2="6" />
-              <line x1="3" y1="22" x2="21" y2="10" strokeDasharray="3 3" />
-              <line x1="3" y1="14" x2="21" y2="2" strokeDasharray="3 3" />
-            </svg>
-            <span>Trend Limits</span>
-            <span className={onOffBadge(showTrendLimits)}>{showTrendLimits ? "ON" : "OFF"}</span>
-          </button>
-
-          {/* ── LCL Below Zero toggle ── */}
-          <button
-            onClick={() => {
-              const next = !allowNegativeLcl;
-              setAllowNegativeLcl(next);
-              onAllowNegativeLclChange?.(next);
-            }}
-            className={toolbarBtn(allowNegativeLcl, "bg-blue-700/60 border-blue-500/60 text-white shadow-[0_0_12px_rgba(59,130,246,0.2)]")}
-            title="Allow LCL to go below zero (for financial metrics, etc.)"
-          >
-            <svg width="13" height="13" viewBox="0 0 24 24" fill="none"
-              stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"
-              className={allowNegativeLcl ? "text-white" : "text-gray-500"}>
-              <line x1="5" y1="12" x2="19" y2="12" />
-              <line x1="12" y1="5" x2="12" y2="19" />
-            </svg>
-            <span>LCL &lt; 0</span>
-            <span className={onOffBadge(allowNegativeLcl)}>{allowNegativeLcl ? "ON" : "OFF"}</span>
-          </button>
 
           {/* ── Add Target ── */}
           <button
